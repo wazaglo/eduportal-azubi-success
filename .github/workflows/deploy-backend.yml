@@ -2,7 +2,7 @@ name: Deploy Backend
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main]
     paths:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
@@ -10,27 +10,27 @@ on:
 env:
   NODE_VERSION: "20"
 
-concurrency:
-  group: deploy-backend-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  build:
-    name: Build Lambda Bundles
+  deploy:
+    name: Build & Deploy Lambda
     runs-on: ubuntu-latest
-    outputs:
-      bundle-hash: ${{ steps.hash.outputs.hash }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "20"
           cache: "npm"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Install dependencies
         run: npm ci
@@ -40,55 +40,14 @@ jobs:
         run: npm run build
         working-directory: backend
 
-      - name: Hash bundles
-        id: hash
-        run: |
-          HASH=$(find dist -type f -exec md5sum {} + | md5sum | cut -d' ' -f1)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-
-      - name: Upload Lambda bundles
-        uses: actions/upload-artifact@v4
-        with:
-          name: lambda-bundles-${{ github.sha }}
-          path: backend/dist/
-          retention-days: 7
-
-  deploy:
-    name: Deploy Lambda Functions
-    needs: build
-    runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-          role-session-name: github-deploy-backend
-
-      - name: Download Lambda bundles
-        uses: actions/download-artifact@v4
-        with:
-          name: lambda-bundles-${{ github.sha }}
-          path: dist/
-
       - name: Deploy Lambda functions
         run: |
-          ENVIRONMENT=${{ github.ref_name == 'main' && 'production' || 'staging' }}
           for zip_file in dist/**/*.zip; do
             if [ -f "$zip_file" ]; then
               function_name=$(basename "$(dirname "$zip_file")")
-              echo "Deploying $function_name..."
               aws lambda update-function-code \
-                --function-name "ai-student-support-${ENVIRONMENT}-${function_name}" \
+                --function-name "azubi-success-${function_name}" \
                 --zip-file "fileb://${zip_file}"
             fi
           done
-
-      - name: Verify deployments
-        run: |
-          aws lambda list-functions \
-            --query "Functions[?starts_with(FunctionName, 'ai-student-support')].{Name:FunctionName,Status:State}" \
-            --output table
+        working-directory: backend
