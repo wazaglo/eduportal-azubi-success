@@ -1,0 +1,48 @@
+**
+!apps
+!packages
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!tsconfig.base.json
+!node_modules
+!.env
+
+# Exclude non-essential files
+.git
+.gitignore
+.github
+.gitattributes
+*.md
+docs/
+terraform/
+.vscode/
+.idea/
+*.log
+coverage/
+dist/
+.cache/
+.trash/
+
+# Exclude CI/CD artifacts
+.github/
+docker-compose*.yml
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Exclude environment files
+.env.local
+.env.production
+.env.staging
+.env.test
+
+# Exclude test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+jest*.xml

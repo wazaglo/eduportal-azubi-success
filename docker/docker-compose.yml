@@ -1,0 +1,105 @@
+version: "3.9"
+
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: astudent-frontend
+    ports:
+      - "8081:8081"
+    environment:
+      NODE_ENV: development
+      PUBLIC_API_URL: http://localhost:3000/api
+      PUBLIC_COGNITO_USER_POOL_ID: ""
+      PUBLIC_COGNITO_CLIENT_ID: ""
+      PUBLIC_COGNITO_REGION: us-east-1
+    volumes:
+      - ..:/app
+      - /app/node_modules
+      - /app/frontend/node_modules
+    command: npm run dev
+    working_dir: /app/frontend
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: astudent-backend
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    environment:
+      NODE_ENV: development
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT: http://dynamodb-local:8000
+      TABLE_USERS: ai-student-users
+      TABLE_CONVERSATIONS: ai-student-conversations
+      TABLE_MESSAGES: ai-student-messages
+      TABLE_CACHE: ai-student-cache
+      TABLE_FEEDBACK: ai-student-feedback
+      TABLE_ANALYTICS: ai-student-analytics
+      TABLE_AUDIT_LOG: ai-student-audit-log
+      COGNITO_USER_POOL_ID: local_pool
+      COGNITO_CLIENT_ID: local_client
+      JWT_SECRET: dev-secret-change-me
+      LOG_LEVEL: debug
+      SES_FROM_EMAIL: dev@student-support.ai
+      KNOWNLEDGE_BASE_ID: ""
+      BEDROCK_GUARDRAIL_ID: ""
+    volumes:
+      - ..:/app
+      - /app/node_modules
+      - /app/backend/node_modules
+    command: npm run dev
+    working_dir: /app/backend
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: astudent-dynamodb
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000 > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-network
+
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: astudent-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  dynamodb-data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
