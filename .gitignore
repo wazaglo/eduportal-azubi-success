@@ -1,0 +1,134 @@
+# Dependencies
+node_modules/
+.pnpm/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.cache/
+*.tsbuildinfo
+*.js.map
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
+.env.*.local
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Test coverage
+coverage/
+.nyc_output/
+lcov.info/
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate*
+terraform/terraform.tfvars
+terraform/*.tfplan
+terraform/lambda-bundles/
+
+# Docker
+docker/data/
+.docker/
+docker-compose.override.yml
+
+# AWS
+.aws/
+samconfig.toml
+*.pem
+
+# Amplify
+amplify/\#current-cloud-backend/
+amplify/.config/local-*
+amplify/mock-data/
+amplify/backend/amplify-meta.json
+amplify/backend/.temp
+
+# Vite
+apps/frontend/dist/
+
+# Serverless
+.serverless/
+
+# Qwik
+server/
+lib/
+
+# DynamoDB local data
+.dynamodb/
+
+# Python (for scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Generated files
+*.generated.ts
+*.graphql
+schema.graphql
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Tooling
+.turbo/
+.next/
+.cache/
+
+# Misc
+*.bak
+*.orig
+.tmp/
+temp/
+.Trashes/

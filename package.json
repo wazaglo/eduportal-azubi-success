@@ -1,0 +1,20 @@
+{
+  "name": "ai-student-support",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-Powered Student Support System",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "test": "npm test --prefix backend",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend",
+    "clean": "rm -rf backend/dist frontend/dist"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
