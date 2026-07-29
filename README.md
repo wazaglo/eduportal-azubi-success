@@ -4,6 +4,15 @@ AI-powered student support platform. Students ask academic questions and receive
 
 Built as a serverless application on AWS. The frontend is a Qwik City SPA with mock data for standalone development.
 
+## Branch Strategy
+
+All development work should be done on the **`dev`** branch. The `main` branch is protected and requires pull request reviews.
+
+```bash
+git checkout dev
+git pull origin dev
+```
+
 ## Quick Start (Docker)
 
 ```bash
