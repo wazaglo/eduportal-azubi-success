@@ -6,6 +6,6 @@ export default function (opts: RenderToStreamOptions) {
   return renderToStream(<Root />, {
     manifest,
     ...opts,
-    containerTag: "qwik-container",
+    containerTagName: "qwik-container",
   });
 }
