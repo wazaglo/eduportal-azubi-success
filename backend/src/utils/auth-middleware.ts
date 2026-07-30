@@ -7,6 +7,7 @@ export interface AuthUser {
   userId: string;
   email: string;
   role: string;
+  level?: string;
   organizationId?: string;
 }
 
@@ -28,6 +29,7 @@ export function extractAndVerifyUser(event: APIGatewayProxyEvent): AuthUser {
       userId: decoded.userId,
       email: decoded.email,
       role: decoded.role,
+      level: decoded.level,
       organizationId: decoded.organizationId,
     };
   } catch {

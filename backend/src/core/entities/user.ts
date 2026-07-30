@@ -1,10 +1,12 @@
 export type UserRole = 'student' | 'admin' | 'support';
+export type StudentLevel = '100' | '200' | '300' | '400';
 
 export interface User {
   userId: string;
   email: string;
   fullName: string;
   role: UserRole;
+  level?: StudentLevel;
   organizationId?: string;
   department?: string;
   enrollmentYear?: number;
@@ -25,6 +27,7 @@ export interface CreateUserInput {
   email: string;
   fullName: string;
   role: UserRole;
+  level?: StudentLevel;
   organizationId?: string;
   department?: string;
   enrollmentYear?: number;
@@ -34,6 +37,7 @@ export interface CreateUserInput {
 
 export interface UpdateUserInput {
   fullName?: string;
+  level?: StudentLevel;
   department?: string;
   enrollmentYear?: number;
   courseOfStudy?: string;

@@ -26,7 +26,7 @@ const messageRepo = new DynamoMessageRepository();
 const analyticsRepo = new DynamoAnalyticsRepository();
 const cacheRepo = new DynamoCacheRepository();
 const cacheService = new CacheService(cacheRepo);
-const knowledgeService = new KnowledgeService();
+const knowledgeService = new KnowledgeService(cacheService);
 const conversationService = new ConversationService(conversationRepo, messageRepo, analyticsRepo);
 const aiProvider = ProviderFactory.getProvider();
 
@@ -35,7 +35,6 @@ const chatService = new ChatService(
   conversationRepo,
   messageRepo,
   analyticsRepo,
-  cacheService,
   knowledgeService,
   conversationService,
   process.env.ASYNC_QUEUE_URL,
@@ -48,6 +47,7 @@ async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
 
   const result = await chatService.sendMessage({
     userId: user.userId,
+    level: user.level,
     conversationId: input.conversationId,
     content: input.content,
     queryType: input.queryType,

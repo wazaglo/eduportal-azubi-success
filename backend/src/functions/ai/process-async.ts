@@ -23,7 +23,7 @@ const messageRepo = new DynamoMessageRepository();
 const analyticsRepo = new DynamoAnalyticsRepository();
 const cacheRepo = new DynamoCacheRepository();
 const cacheService = new CacheService(cacheRepo);
-const knowledgeService = new KnowledgeService();
+const knowledgeService = new KnowledgeService(cacheService);
 const conversationService = new ConversationService(conversationRepo, messageRepo, analyticsRepo);
 const aiProvider = ProviderFactory.getProvider();
 
@@ -32,7 +32,6 @@ const chatService = new ChatService(
   conversationRepo,
   messageRepo,
   analyticsRepo,
-  cacheService,
   knowledgeService,
   conversationService,
 );

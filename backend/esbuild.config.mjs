@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
-import { readdirSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 
 const srcDir = 'src/functions';
 const outDir = 'dist';

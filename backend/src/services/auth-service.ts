@@ -26,6 +26,7 @@ interface RegisterInput {
   password: string;
   fullName: string;
   role?: User['role'];
+  level?: User['level'];
   department?: string;
   enrollmentYear?: number;
   courseOfStudy?: string;
@@ -92,6 +93,7 @@ export class AuthService {
       email: input.email,
       fullName: input.fullName,
       role: input.role ?? 'student',
+      level: input.level,
       department: input.department,
       enrollmentYear: input.enrollmentYear,
       courseOfStudy: input.courseOfStudy,
@@ -243,6 +245,7 @@ export class AuthService {
         userId: user.userId,
         email: user.email,
         role: user.role,
+        level: user.level,
         organizationId: user.organizationId,
       },
       JWT.SECRET,

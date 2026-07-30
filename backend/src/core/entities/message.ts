@@ -16,6 +16,8 @@ export interface Message {
     cached?: boolean;
     confidence?: number;
     guardrailTriggered?: boolean;
+    source?: string;
+    documentTitle?: string;
   };
   createdAt: string;
 }

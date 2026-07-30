@@ -1,0 +1,11 @@
+{
+  "httpMethod": "GET",
+  "path": "/admin/system-health",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer test-admin-token"
+  },
+  "queryStringParameters": {},
+  "pathParameters": {},
+  "body": null
+}

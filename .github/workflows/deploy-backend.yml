@@ -2,28 +2,42 @@ name: Deploy Backend
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
     paths:
-      - "backend/**"
-      - ".github/workflows/deploy-backend.yml"
+      - 'backend/**'
 
 env:
-  NODE_VERSION: "20"
-
-permissions:
-  contents: read
+  REGION: ${{ secrets.AWS_REGION }}
+  ROLE_ARN: ${{ secrets.LAMBDA_ROLE_ARN }}
+  RUNTIME: nodejs20
+  MEMORY: 256
+  TIMEOUT_DEFAULT: 30
+  TIMEOUT_LONG: 60
 
 jobs:
   deploy:
-    name: Build & Deploy Lambda
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build handlers
+        run: npm run build
+
+      - name: Package deployment zips
+        run: npm run package
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -32,22 +46,78 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: backend
-
-      - name: Build Lambda bundles
-        run: npm run build
-        working-directory: backend
-
-      - name: Deploy Lambda functions
+      - name: Deploy all Lambda functions
         run: |
-          for zip_file in dist/**/*.zip; do
-            if [ -f "$zip_file" ]; then
-              function_name=$(basename "$(dirname "$zip_file")")
+          shopt -s globstar
+
+          # Common env vars for every function
+          COMMON_VARS="TABLE_USERS=${{ secrets.TABLE_USERS }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_CONVERSATIONS=${{ secrets.TABLE_CONVERSATIONS }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_MESSAGES=${{ secrets.TABLE_MESSAGES }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_CACHE=${{ secrets.TABLE_CACHE }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_FEEDBACK=${{ secrets.TABLE_FEEDBACK }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_ANALYTICS=${{ secrets.TABLE_ANALYTICS }}"
+          COMMON_VARS="$COMMON_VARS,TABLE_AUDIT_LOG=${{ secrets.TABLE_AUDIT_LOG }}"
+          COMMON_VARS="$COMMON_VARS,JWT_SECRET=${{ secrets.JWT_SECRET }}"
+          COMMON_VARS="$COMMON_VARS,JWT_ISSUER=${{ secrets.JWT_ISSUER }}"
+          COMMON_VARS="$COMMON_VARS,COGNITO_USER_POOL_ID=${{ secrets.COGNITO_USER_POOL_ID }}"
+          COMMON_VARS="$COMMON_VARS,COGNITO_CLIENT_ID=${{ secrets.COGNITO_CLIENT_ID }}"
+          COMMON_VARS="$COMMON_VARS,COGNITO_CLIENT_SECRET=${{ secrets.COGNITO_CLIENT_SECRET }}"
+          COMMON_VARS="$COMMON_VARS,AWS_REGION=${{ secrets.AWS_REGION }}"
+
+          for zip in deployments/**/*.zip; do
+            handler_path="${zip#deployments/}"
+            handler_path="${handler_path%.zip}"
+            function_name="eduportal-${handler_path////-}"
+
+            # Per-handler extra env vars
+            EXTRA=""
+            TIMEOUT=$TIMEOUT_DEFAULT
+
+            case "$handler_path" in
+              chat/send-message)
+                EXTRA="ASYNC_QUEUE_URL=${{ secrets.ASYNC_QUEUE_URL }},KNOWLEDGE_BUCKET=${{ secrets.KNOWLEDGE_BUCKET }},AI_MODEL_ID=${{ secrets.AI_MODEL_ID }}"
+                TIMEOUT=$TIMEOUT_LONG
+                ;;
+              ai/process-async)
+                EXTRA="AI_MODEL_ID=${{ secrets.AI_MODEL_ID }}"
+                TIMEOUT=$TIMEOUT_LONG
+                ;;
+            esac
+
+            ENV_VARS="${COMMON_VARS}"
+            [ -n "$EXTRA" ] && ENV_VARS="${ENV_VARS},${EXTRA}"
+
+            echo "Deploying ${function_name} (${handler_path}.main, ${TIMEOUT}s)..."
+
+            if aws lambda get-function --function-name "$function_name" --region "$REGION" &>/dev/null; then
               aws lambda update-function-code \
-                --function-name "azubi-success-${function_name}" \
-                --zip-file "fileb://${zip_file}"
+                --function-name "$function_name" \
+                --zip-file "fileb://${zip}" \
+                --region "$REGION"
+
+              aws lambda update-function-configuration \
+                --function-name "$function_name" \
+                --handler "${handler_path}.main" \
+                --timeout "$TIMEOUT" \
+                --memory-size "$MEMORY" \
+                --environment "Variables={${ENV_VARS}}" \
+                --region "$REGION" > /dev/null
+            else
+              aws lambda create-function \
+                --function-name "$function_name" \
+                --runtime "$RUNTIME" \
+                --role "$ROLE_ARN" \
+                --handler "${handler_path}.main" \
+                --zip-file "fileb://${zip}" \
+                --timeout "$TIMEOUT" \
+                --memory-size "$MEMORY" \
+                --environment "Variables={${ENV_VARS}}" \
+                --region "$REGION" > /dev/null
             fi
+
+            echo "  ✓ ${function_name}"
           done
-        working-directory: backend
+
+          echo ""
+          echo "All functions deployed."

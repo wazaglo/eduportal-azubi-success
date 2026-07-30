@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { AnalyticsRepository } from '../../core/ports/analytics-repository';
 import { AnalyticsEvent, CreateAnalyticsEventInput, AnalyticsEventType } from '../../core/entities/analytics-event';
@@ -15,7 +16,7 @@ export class DynamoAnalyticsRepository implements AnalyticsRepository {
 
   async create(input: CreateAnalyticsEventInput): Promise<AnalyticsEvent> {
     const event: AnalyticsEvent = {
-      eventId: '',
+      eventId: input.eventId ?? uuidv4(),
       eventType: input.eventType,
       userId: input.userId,
       sessionId: input.sessionId,

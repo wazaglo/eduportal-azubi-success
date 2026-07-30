@@ -107,6 +107,9 @@ env/
 venv/
 .venv/
 
+# Lambda deployment artifacts
+backend/deployments/
+
 # Generated files
 *.generated.ts
 *.graphql

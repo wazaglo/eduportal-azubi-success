@@ -3,20 +3,20 @@ import { AIProvider, AIResponse } from '../core/ports/ai-provider';
 import { ConversationRepository } from '../core/ports/conversation-repository';
 import { MessageRepository } from '../core/ports/message-repository';
 import { AnalyticsRepository } from '../core/ports/analytics-repository';
-import { CacheService } from './cache-service';
 import { KnowledgeService } from './knowledge-service';
 import { ConversationService } from './conversation-service';
 import { Message, CreateMessageInput } from '../core/entities/message';
 import { Conversation } from '../core/entities/conversation';
 import { NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { QUERY_TYPES, AI_MODELS } from '../utils/constants';
+import { QUERY_TYPES } from '../utils/constants';
 import { academicQueryPrompt } from '../prompts/academic-query';
 import { administrativeQueryPrompt } from '../prompts/administrative-query';
 import { conversationSummaryPrompt } from '../prompts/conversation-summary';
 
 interface SendMessageInput {
   userId: string;
+  level?: string;
   conversationId?: string;
   content: string;
   queryType?: 'academic' | 'administrative' | 'general';
@@ -28,6 +28,7 @@ interface SendMessageResult {
   aiMessage?: Message;
   conversation: Conversation;
   cached: boolean;
+  source: string;
   processingTimeMs: number;
 }
 
@@ -37,7 +38,6 @@ export class ChatService {
     private readonly conversationRepo: ConversationRepository,
     private readonly messageRepo: MessageRepository,
     private readonly analyticsRepo: AnalyticsRepository,
-    private readonly cacheService: CacheService,
     private readonly knowledgeService: KnowledgeService,
     private readonly conversationService: ConversationService,
     private readonly asyncQueueUrl?: string,
@@ -89,93 +89,29 @@ export class ChatService {
         userMessage,
         conversation,
         cached: false,
+        source: 'async',
         processingTimeMs: Date.now() - startTime,
       };
     }
 
-    const knowledgeContext = await this.knowledgeService.prepareContext(
+    // Step 1-3: Knowledge service handles cache → S3 KB → model stub
+    const answer = await this.knowledgeService.getAnswer(
       input.content,
-      conversation.queryType,
-    );
-
-    const cachedResponse = await this.cacheService.findCachedResponse(
-      input.content,
+      input.level ?? '',
       conversation.queryType ?? 'general',
     );
-
-    let aiResponse: AIResponse;
-    let cached = false;
-
-    if (cachedResponse) {
-      aiResponse = {
-        content: cachedResponse.response,
-        modelUsed: cachedResponse.modelUsed,
-        tokensUsed: cachedResponse.tokensUsed,
-        latencyMs: 0,
-        guardrailTriggered: false,
-        confidence: 1,
-        finishReason: 'cached',
-      };
-      cached = true;
-
-      await this.analyticsRepo.create({
-        eventType: 'cache_hit',
-        userId: input.userId,
-        properties: { cacheId: cachedResponse.cacheId, queryType: conversation.queryType },
-      });
-    } else {
-      const systemPrompt = this.getSystemPrompt(conversation.queryType, knowledgeContext);
-
-      aiResponse = await this.aiProvider.generateResponse({
-        prompt: input.content,
-        systemPrompt,
-        conversationHistory: await this.getConversationHistory(conversation.conversationId),
-        requireReasoning: conversation.queryType === 'academic',
-        guardrails: {
-          contentPolicy: true,
-          topicPolicy: true,
-          wordPolicy: true,
-        },
-      });
-
-      await this.cacheService.storeCachedResponse({
-        query: input.content,
-        response: aiResponse.content,
-        queryType: conversation.queryType ?? 'general',
-        modelUsed: aiResponse.modelUsed,
-        tokensUsed: aiResponse.tokensUsed,
-        similarityHash: '',
-      });
-
-      await this.analyticsRepo.create({
-        eventType: 'cache_miss',
-        userId: input.userId,
-        properties: { queryType: conversation.queryType },
-      });
-
-      if (aiResponse.guardrailTriggered) {
-        await this.analyticsRepo.create({
-          eventType: 'guardrail_triggered',
-          userId: input.userId,
-          properties: { modelUsed: aiResponse.modelUsed },
-        });
-      }
-    }
 
     const aiMessage = await this.messageRepo.create({
       conversationId: conversation.conversationId,
       userId: input.userId,
       sender: 'ai',
-      content: aiResponse.content,
+      content: answer.answer,
       status: 'delivered',
       queryType: conversation.queryType,
       metadata: {
-        modelUsed: aiResponse.modelUsed,
-        latencyMs: aiResponse.latencyMs,
-        tokensUsed: aiResponse.tokensUsed,
-        cached,
-        confidence: aiResponse.confidence,
-        guardrailTriggered: aiResponse.guardrailTriggered,
+        source: answer.source,
+        cached: answer.cached,
+        documentTitle: answer.documentTitle,
       },
     });
 
@@ -184,10 +120,9 @@ export class ChatService {
       userId: input.userId,
       properties: {
         messageId: aiMessage.messageId,
-        modelUsed: aiResponse.modelUsed,
-        latencyMs: aiResponse.latencyMs,
-        cached,
-        tokensUsed: aiResponse.tokensUsed,
+        source: answer.source,
+        cached: answer.cached,
+        documentTitle: answer.documentTitle,
       },
     });
 
@@ -210,15 +145,6 @@ export class ChatService {
       );
     }
 
-    logger.info('Message processed', {
-      conversationId: conversation.conversationId,
-      cached,
-      modelUsed: aiResponse.modelUsed,
-      tokensUsed: aiResponse.tokensUsed,
-      latencyMs: aiResponse.latencyMs,
-      processingTimeMs: Date.now() - startTime,
-    });
-
     return {
       userMessage,
       aiMessage,
@@ -227,7 +153,8 @@ export class ChatService {
         messageCount: newMessageCount,
         lastMessageAt: new Date().toISOString(),
       },
-      cached,
+      cached: answer.cached,
+      source: answer.source,
       processingTimeMs: Date.now() - startTime,
     };
   }
@@ -318,7 +245,7 @@ export class ChatService {
     }
   }
 
-  async processAsyncResponse(conversationId: string, messageId: string, userId: string): Promise<void> {
+  async processAsyncResponse(conversationId: string, messageId: string, userId: string, level?: string): Promise<void> {
     const conversation = await this.conversationService.getConversation(conversationId, userId);
 
     const userMessage = await this.messageRepo.findById(messageId);
@@ -326,34 +253,23 @@ export class ChatService {
       throw new NotFoundError('Message', messageId);
     }
 
-    const knowledgeContext = await this.knowledgeService.prepareContext(
+    const answer = await this.knowledgeService.getAnswer(
       userMessage.content,
-      conversation.queryType,
+      level ?? '',
+      conversation.queryType ?? 'general',
     );
-
-    const systemPrompt = this.getSystemPrompt(conversation.queryType, knowledgeContext);
-
-    const aiResponse = await this.aiProvider.generateResponse({
-      prompt: userMessage.content,
-      systemPrompt,
-      conversationHistory: await this.getConversationHistory(conversationId),
-      requireReasoning: conversation.queryType === 'academic',
-    });
 
     await this.messageRepo.create({
       conversationId,
       userId,
       sender: 'ai',
-      content: aiResponse.content,
+      content: answer.answer,
       status: 'delivered',
       queryType: conversation.queryType,
       metadata: {
-        modelUsed: aiResponse.modelUsed,
-        latencyMs: aiResponse.latencyMs,
-        tokensUsed: aiResponse.tokensUsed,
-        cached: false,
-        confidence: aiResponse.confidence,
-        guardrailTriggered: aiResponse.guardrailTriggered,
+        source: answer.source,
+        cached: answer.cached,
+        documentTitle: answer.documentTitle,
       },
     });
 
