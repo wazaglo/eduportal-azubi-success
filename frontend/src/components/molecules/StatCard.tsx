@@ -6,7 +6,7 @@ export interface StatCardProps {
   icon: any;
   trend?: string;
   trendUp?: boolean;
-  color?: "primary" | "success" | "warning" | "danger";
+  color?: "primary" | "success" | "warning" | "danger" | "info";
   class?: string;
 }
 
@@ -18,6 +18,7 @@ export const StatCard = component$<StatCardProps>(
       warning:
         "bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400",
       danger: "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400",
+      info: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
     };
 
     return (
