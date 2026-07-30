@@ -7,7 +7,7 @@
     "dev": "vite --mode ssr",
     "build": "qwik build",
     "build.client": "vite build",
-    "build.server": "vite build --mode ssr",
+    "build.server": "vite build --mode ssr --config adapters/static/vite.config.ts",
     "build.preview": "vite build --mode ssr",
     "preview": "vite preview --mode ssr",
     "fmt": "prettier --write .",
