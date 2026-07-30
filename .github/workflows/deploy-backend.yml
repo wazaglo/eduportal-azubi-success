@@ -7,8 +7,8 @@ on:
       - 'backend/**'
 
 env:
-  REGION: ${{ secrets.AWS_REGION }}
-  ROLE_ARN: ${{ secrets.LAMBDA_ROLE_ARN }}
+  REGION: eu-west-1
+  ROLE_ARN: arn:aws:iam::814330181503:role/eduportal-lambda-role
   RUNTIME: nodejs20.x
   MEMORY: 256
   TIMEOUT_DEFAULT: 30
@@ -44,63 +44,21 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: eu-west-1
 
       - name: Deploy all Lambda functions
         run: |
           shopt -s globstar
 
-          # Common env vars for every function (skip empty/unset secrets)
-          COMMON_VARS=""
-          env_append() {
-            local var="$1" val="$2"
-            [ -z "$val" ] && return
-            [ -n "$COMMON_VARS" ] && COMMON_VARS="$COMMON_VARS,"
-            COMMON_VARS="${COMMON_VARS}${var}=${val}"
-          }
-          env_append TABLE_USERS "${{ secrets.TABLE_USERS }}"
-          env_append TABLE_CONVERSATIONS "${{ secrets.TABLE_CONVERSATIONS }}"
-          env_append TABLE_MESSAGES "${{ secrets.TABLE_MESSAGES }}"
-          env_append TABLE_CACHE "${{ secrets.TABLE_CACHE }}"
-          env_append TABLE_FEEDBACK "${{ secrets.TABLE_FEEDBACK }}"
-          env_append TABLE_ANALYTICS "${{ secrets.TABLE_ANALYTICS }}"
-          env_append TABLE_AUDIT_LOG "${{ secrets.TABLE_AUDIT_LOG }}"
-          env_append JWT_SECRET "${{ secrets.JWT_SECRET }}"
-          env_append JWT_ISSUER "${{ secrets.JWT_ISSUER }}"
-
           for zip in deployments/**/*.zip; do
             handler_path="${zip#deployments/}"
             handler_path="${handler_path%.zip}"
             function_name="eduportal-${handler_path////-}"
+            timeout=$TIMEOUT_DEFAULT
+            [ "$handler_path" = "chat/send-message" ] && timeout=$TIMEOUT_LONG
+            [ "$handler_path" = "ai/process-async" ] && timeout=$TIMEOUT_LONG
 
-            ENV_VARS="${COMMON_VARS}"
-            TIMEOUT=$TIMEOUT_DEFAULT
-
-            env_append_to() {
-              local var="$1" val="$2"
-              [ -z "$val" ] && return
-              [ -n "$ENV_VARS" ] && ENV_VARS="$ENV_VARS,"
-              ENV_VARS="${ENV_VARS}${var}=${val}"
-            }
-
-            case "$handler_path" in
-              chat/send-message)
-                env_append_to ASYNC_QUEUE_URL "${{ secrets.ASYNC_QUEUE_URL }}"
-                env_append_to KNOWLEDGE_BUCKET "${{ secrets.KNOWLEDGE_BUCKET }}"
-                env_append_to AI_MODEL_ID "${{ secrets.AI_MODEL_ID }}"
-                TIMEOUT=$TIMEOUT_LONG
-                ;;
-              ai/process-async)
-                env_append_to AI_MODEL_ID "${{ secrets.AI_MODEL_ID }}"
-                TIMEOUT=$TIMEOUT_LONG
-                ;;
-            esac
-
-            echo "Deploying ${function_name} (${handler_path}.main, ${TIMEOUT}s)..."
-
-            # Build env flag (skip if no vars to prevent clearing existing ones)
-            ENV_FLAG=""
-            [ -n "$ENV_VARS" ] && ENV_FLAG="--environment Variables={${ENV_VARS}}"
+            echo "Deploying ${function_name} (${handler_path}.main, ${timeout}s)..."
 
             if aws lambda get-function --function-name "$function_name" --region "$REGION" &>/dev/null; then
               aws lambda update-function-code \
@@ -111,9 +69,8 @@ jobs:
               aws lambda update-function-configuration \
                 --function-name "$function_name" \
                 --handler "${handler_path}.main" \
-                --timeout "$TIMEOUT" \
+                --timeout "$timeout" \
                 --memory-size "$MEMORY" \
-                $ENV_FLAG \
                 --region "$REGION" > /dev/null
             else
               aws lambda create-function \
@@ -122,9 +79,8 @@ jobs:
                 --role "$ROLE_ARN" \
                 --handler "${handler_path}.main" \
                 --zip-file "fileb://${zip}" \
-                --timeout "$TIMEOUT" \
+                --timeout "$timeout" \
                 --memory-size "$MEMORY" \
-                $ENV_FLAG \
                 --region "$REGION" > /dev/null
             fi
 
