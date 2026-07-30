@@ -9,7 +9,7 @@ on:
 env:
   REGION: ${{ secrets.AWS_REGION }}
   ROLE_ARN: ${{ secrets.LAMBDA_ROLE_ARN }}
-  RUNTIME: nodejs20
+  RUNTIME: nodejs20.x
   MEMORY: 256
   TIMEOUT_DEFAULT: 30
   TIMEOUT_LONG: 60
