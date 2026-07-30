@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import { qwikCity } from "@builder.io/qwik-city/vite";
 import { qwikVite } from "@builder.io/qwik/optimizer";
+import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig(() => {
   return {
-    plugins: [qwikCity({ css: "./src/styles/global.css" }), qwikVite()],
+    plugins: [tailwindcss(), qwikCity(), qwikVite()],
     resolve: {
       alias: {
         "~": path.resolve(__dirname, "./src"),

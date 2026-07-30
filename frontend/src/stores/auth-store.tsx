@@ -52,35 +52,58 @@ export const AuthProvider = component$(() => {
     user: null,
     token: null,
     isAuthenticated: false,
-    isLoading: true,
+    isLoading: false,
   });
+
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem("mock_user");
+    if (saved && !state.user) {
+      state.user = JSON.parse(saved);
+      state.isAuthenticated = true;
+    }
+  }
 
   const store: AuthStore = {
     state,
-    login: $<(_email: string, _password: string) => Promise<void>>(async () => {
+    login: $<(email: string, _password: string) => Promise<void>>(async (email) => {
       state.isLoading = true;
-      try {
-        state.isAuthenticated = true;
-        state.isLoading = false;
-      } catch {
-        state.isLoading = false;
-        throw new Error("Login failed");
+      const mockUser: User = {
+        id: "mock-1",
+        email,
+        name: email.split("@")[0],
+        role: "student",
+        verified: true,
+      };
+      if (typeof window !== "undefined") {
+        localStorage.setItem("mock_user", JSON.stringify(mockUser));
       }
+      state.user = mockUser;
+      state.isAuthenticated = true;
+      state.isLoading = false;
     }),
-    register: $<(_data: RegisterData) => Promise<void>>(async () => {
+    register: $<(data: RegisterData) => Promise<void>>(async (data) => {
       state.isLoading = true;
-      try {
-        state.isAuthenticated = true;
-        state.isLoading = false;
-      } catch {
-        state.isLoading = false;
-        throw new Error("Registration failed");
+      const mockUser: User = {
+        id: "mock-1",
+        email: data.email,
+        name: data.name,
+        role: data.role,
+        verified: false,
+      };
+      if (typeof window !== "undefined") {
+        localStorage.setItem("mock_user", JSON.stringify(mockUser));
       }
+      state.user = mockUser;
+      state.isAuthenticated = true;
+      state.isLoading = false;
     }),
     logout: $(() => {
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("mock_user");
+      }
     }),
     setUser: $((user: User) => {
       state.user = user;

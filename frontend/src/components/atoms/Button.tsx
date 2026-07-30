@@ -1,4 +1,4 @@
-import { component$, type QRL } from "@builder.io/qwik";
+import { component$, Slot, type QRL } from "@builder.io/qwik";
 import { Loader2Icon } from "lucide-qwik";
 
 type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
@@ -13,7 +13,6 @@ export interface ButtonProps {
   loading?: boolean;
   fullWidth?: boolean;
   class?: string;
-  children?: any;
   ariaLabel?: string;
 }
 
@@ -27,7 +26,6 @@ export const Button = component$<ButtonProps>(
     loading,
     fullWidth,
     class: className,
-    children,
     ariaLabel,
   }) => {
     const base =
@@ -68,7 +66,7 @@ export const Button = component$<ButtonProps>(
         ].join(" ")}
       >
         {loading && <Loader2Icon class="h-4 w-4 animate-spin" />}
-        {children}
+        <Slot />
       </button>
     );
   }

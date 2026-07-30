@@ -1,13 +1,12 @@
-import { component$, useStyles$ } from "@builder.io/qwik";
+import { component$ } from "@builder.io/qwik";
 import { QwikCityProvider, RouterOutlet, ServiceWorkerRegister } from "@builder.io/qwik-city";
 import { RouterHead } from "./components/router-head";
 import { ThemeProvider } from "./stores/theme-store";
 import { AuthProvider } from "./stores/auth-store";
 import { ChatProvider } from "./stores/chat-store";
-import globalStyles from "./styles/global.css";
+import "./styles/global.css";
 
 export default component$(() => {
-  useStyles$(globalStyles);
   return (
     <QwikCityProvider>
       <head>
