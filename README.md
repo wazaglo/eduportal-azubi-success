@@ -58,45 +58,45 @@ All backend components are serverless on AWS:
 
 ### Auth (public)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/register` | Create account (email, password, fullName) |
-| POST | `/auth/login` | Sign in, returns JWT + refresh token |
-| POST | `/auth/refresh-token` | Get new JWT from refresh token |
-| POST | `/auth/verify-email` | Verify email with code |
-| POST | `/auth/reset-password` | Request reset (email) or confirm (email, code, newPassword) |
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| POST | `/auth/register` | `eduportal-auth-register` | Create account (email, password, fullName) |
+| POST | `/auth/login` | `eduportal-auth-login` | Sign in, returns JWT + refresh token |
+| POST | `/auth/refresh-token` | `eduportal-auth-refresh-token` | Get new JWT from refresh token |
+| POST | `/auth/verify-email` | `eduportal-auth-verify-email` | Verify email with code |
+| POST | `/auth/reset-password` | `eduportal-auth-reset-password` | Request reset (email) or confirm (email, code, newPassword) |
 
 ### User (JWT)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/user/profile` | Get current user profile |
-| PUT | `/user/profile` | Update profile |
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| GET | `/user/profile` | `eduportal-user-get-profile` | Get current user profile |
+| PUT | `/user/profile` | `eduportal-user-update-profile` | Update profile |
 
 ### Chat (JWT)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/chat/send` | Send message (content; optional conversationId, queryType, requireAsync) |
-| GET | `/chat/conversations` | List conversations (limit, nextToken) |
-| GET | `/chat/conversations/{id}` | Get conversation + messages |
-| DELETE | `/chat/conversations/{id}` | Delete conversation |
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| POST | `/chat/send` | `eduportal-chat-send-message` | Send message (content; optional conversationId, queryType, requireAsync) |
+| GET | `/chat/conversations` | `eduportal-chat-get-conversations` | List conversations (limit, nextToken) |
+| GET | `/chat/conversations/{id}` | `eduportal-chat-get-conversation` | Get conversation + messages |
+| DELETE | `/chat/conversations/{id}` | `eduportal-chat-delete-conversation` | Delete conversation |
 
 ### Feedback (JWT)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/feedback` | Submit feedback (messageId, rating 1-5; optional comment, category) |
-| GET | `/feedback` | Get your feedback (limit, nextToken) |
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| POST | `/feedback` | `eduportal-feedback-submit` | Submit feedback (messageId, rating 1-5; optional comment, category) |
+| GET | `/feedback` | `eduportal-feedback-get` | Get your feedback (limit, nextToken) |
 
 ### Admin (JWT + admin role)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/admin/users` | List users (limit, nextToken, role) |
-| PUT | `/admin/users/{id}` | Update user (role, isActive, etc.) |
-| GET | `/admin/analytics` | Usage analytics (startDate, endDate) |
-| GET | `/admin/health` | System health |
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| GET | `/admin/users` | `eduportal-admin-list-users` | List users (limit, nextToken, role) |
+| PUT | `/admin/users/{id}` | `eduportal-admin-manage-user` | Update user (role, isActive, etc.) |
+| GET | `/admin/analytics` | `eduportal-admin-get-analytics` | Usage analytics (startDate, endDate) |
+| GET | `/admin/health` | `eduportal-admin-system-health` | System health |
 
 ### AI (async, SQS-triggered — not HTTP)
 
