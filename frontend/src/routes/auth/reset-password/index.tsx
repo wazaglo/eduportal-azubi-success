@@ -4,14 +4,17 @@ import { GraduationCapIcon, ArrowLeftIcon, MailIcon, CheckCircle2Icon } from "lu
 import { Button } from "~/components/atoms/Button";
 import { Input } from "~/components/atoms/Input";
 import { validateResetPasswordForm } from "~/utils/validators";
+import { api } from "~/utils/api-client";
 
 export default component$(() => {
   const email = useSignal("");
   const errors = useStore<Record<string, string>>({});
   const isSubmitting = useSignal(false);
   const isSubmitted = useSignal(false);
+  const submitError = useSignal("");
 
   const handleSubmit = $(async () => {
+    submitError.value = "";
     const validation = validateResetPasswordForm({ email: email.value });
     if (!validation.valid) {
       Object.assign(errors, validation.errors);
@@ -19,9 +22,14 @@ export default component$(() => {
     }
     Object.assign(errors, {});
     isSubmitting.value = true;
-    await new Promise((r) => setTimeout(r, 1500));
-    isSubmitting.value = false;
-    isSubmitted.value = true;
+    try {
+      await api.post("/auth/reset-password", { email: email.value });
+      isSubmitting.value = false;
+      isSubmitted.value = true;
+    } catch (err: any) {
+      submitError.value = err?.message || "Failed to send reset link. Please try again.";
+      isSubmitting.value = false;
+    }
   });
 
   if (isSubmitted.value) {
@@ -67,6 +75,7 @@ export default component$(() => {
 
         <div class="rounded-2xl border border-border bg-surface p-6 sm:p-8">
           <form
+            preventdefault:submit
             onSubmit$={(e) => {
               e.preventDefault();
               handleSubmit();
@@ -92,6 +101,12 @@ export default component$(() => {
               <MailIcon class="h-4 w-4" />
               Send Reset Link
             </Button>
+
+            {submitError.value && (
+              <p class="text-sm text-red-600 text-center" role="alert">
+                {submitError.value}
+              </p>
+            )}
           </form>
         </div>
 

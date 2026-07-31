@@ -46,33 +46,38 @@ Key variables for local development:
 
 ```bash
 cd backend
-npm run build
+npm run build:all
 ```
 
-This runs the esbuild bundler and produces Lambda bundles in `backend/dist/`. Each handler is compiled into a single CJS file with all dependencies (except AWS SDK packages) bundled inline.
+This runs the esbuild bundler and produces one zip per Lambda handler in `backend/deployments/`. Each handler is compiled into a single CJS file with all dependencies (except AWS SDK packages) bundled inline.
 
 Output:
 
 ```
-backend/dist/
-├── auth/register/index.js
-├── auth/login/index.js
-├── auth/verify-email/index.js
-├── auth/reset-password/index.js
-├── auth/refresh-token/index.js
-├── chat/send-message/index.js
-├── chat/get-conversations/index.js
-├── chat/get-conversation/index.js
-├── chat/delete-conversation/index.js
-├── user/get-profile/index.js
-├── user/update-profile/index.js
-├── feedback/submit-feedback/index.js
-├── feedback/get-feedback/index.js
-├── admin/list-users/index.js
-├── admin/manage-user/index.js
-├── admin/get-analytics/index.js
-├── admin/system-health/index.js
-└── ai/process-async/index.js
+backend/deployments/
+├── auth/register.zip
+├── auth/login.zip
+├── auth/verify-email.zip
+├── auth/reset-password.zip
+├── auth/refresh-token.zip
+├── auth/resend-verification-code.zip
+├── chat/send-message.zip
+├── chat/get-conversations.zip
+├── chat/get-conversation.zip
+├── chat/delete-conversation.zip
+├── user/get-profile.zip
+├── user/update-profile.zip
+├── feedback/submit-feedback.zip
+├── feedback/get-feedback.zip
+├── knowledge-base/presign-upload.zip
+├── knowledge-base/complete-upload.zip
+├── knowledge-base/list-documents.zip
+├── knowledge-base/delete-document.zip
+├── admin/list-users.zip
+├── admin/manage-user.zip
+├── admin/get-analytics.zip
+├── admin/system-health.zip
+└── ai/process-async.zip
 ```
 
 ### Type Check

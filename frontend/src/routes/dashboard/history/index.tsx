@@ -18,9 +18,13 @@ export default component$(() => {
   const chat = useChat();
   const searchQuery = useSignal("");
   const sortOrder = useSignal<"newest" | "oldest">("newest");
+  const showUnreadOnly = useSignal(false);
 
   const filteredConversations = () => {
     let convs = chat.state.conversations;
+    if (showUnreadOnly.value) {
+      convs = convs.filter((c) => c.unread);
+    }
     if (searchQuery.value) {
       const q = searchQuery.value.toLowerCase();
       convs = convs.filter(
@@ -55,7 +59,7 @@ export default component$(() => {
           <SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
           <input
             type="search"
-            placeholder="SearchIcon conversations..."
+            placeholder="Search conversations..."
             value={searchQuery.value}
             onInput$={(e: any) => (searchQuery.value = e.target.value)}
             class={[
@@ -77,9 +81,17 @@ export default component$(() => {
             <ArrowUpDownIcon class="h-4 w-4" />
             {sortOrder.value === "newest" ? "Newest" : "Oldest"}
           </button>
-          <button class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-surface text-sm font-medium text-text-secondary hover:bg-surface-secondary transition-colors">
+          <button
+            onClick$={() => (showUnreadOnly.value = !showUnreadOnly.value)}
+            class={[
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors",
+              showUnreadOnly.value
+                ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300"
+                : "border-border bg-surface text-text-secondary hover:bg-surface-secondary",
+            ].join(" ")}
+          >
             <FilterIcon class="h-4 w-4" />
-            FilterIcon
+            {showUnreadOnly.value ? "Unread Only" : "All"}
           </button>
         </div>
       </div>

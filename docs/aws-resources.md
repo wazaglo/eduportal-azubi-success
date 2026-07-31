@@ -204,6 +204,56 @@ All table names are configurable via environment variables. The defaults below a
 
 ---
 
+### Table: `ai-student-knowledge`
+
+Stores metadata for documents in the S3 knowledge base (the file content itself lives in S3).
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| documentId (PK) | String | UUID |
+| s3Key | String | S3 object key (`knowledge/{level}/{subject}/{strand}/{substrand}/{file}`) |
+| fileName | String | Original file name |
+| year | String | `SHS1`, `SHS2`, `SHS3` |
+| subject | String | One of 28 supported subjects |
+| strand | String | Curriculum strand |
+| substrand | String | Curriculum sub-strand |
+| size | Number | Content length in bytes |
+| contentType | String | MIME type (e.g., `text/markdown`) |
+| status | String | `indexed`, `indexing`, `failed` |
+| uploadedBy | String | Admin user ID |
+| uploadedAt | String | ISO 8601 timestamp |
+| downloads | Number | Download counter |
+
+**GSIs:**
+- `SubjectIndex` — PK: `subject` (String), SK: `uploadedAt` (String) — for listing by subject
+- `YearIndex` — PK: `year` (String), SK: `uploadedAt` (String) — for listing by year
+
+**Settings:**
+- Billing mode: Pay per request (On-demand)
+- Encryption: AWS owned key (default)
+
+**Env var:** `TABLE_KNOWLEDGE`
+
+---
+
+### S3 Bucket: `eduportal-azubi-success-knowledge-base`
+
+Stores the knowledge base document files (NaCCA curriculum study guides).
+
+| Setting | Value |
+|---------|-------|
+| Region | eu-west-1 (or your deployment region) |
+| Bucket name | `eduportal-azubi-success-knowledge-base` |
+| Encryption | SSE-S3 (AES-256) |
+| Public access | Block all public access |
+| Key layout | `knowledge/{SHS1\|SHS2\|SHS3}/{Subject}/{Strand}/{Sub-Strand}/{file}` |
+
+Objects are uploaded by admins via presigned PUT URLs issued by `eduportal-knowledge-base-presign-upload` and read by `eduportal-knowledge-base-list-documents`, `eduportal-knowledge-base-delete-document`, and `eduportal-chat-send-message` (via `KnowledgeService`).
+
+**Env var:** `KNOWLEDGE_BUCKET`
+
+---
+
 ## 2. Cognito User Pool
 
 ### Create User Pool
@@ -423,9 +473,9 @@ Once verified, the email address is set as `SES_FROM_EMAIL`.
 - **IAM Role**: `ai-student-support-lambda-role` (see Section 10)
 - **Environment variables**: All 22 env vars listed in `.env.example` must be set on every function
 
-### All Lambda Functions (18 total)
+### All Lambda Functions (23 total)
 
-**Note:** After building with `npm run build` in the `backend/` directory, each function produces a zip file in `backend/dist/`. Each function is a separate file named after the handler.
+**Note:** After building with `npm run build:all` in the `backend/` directory, each function produces a zip file in `backend/deployments/`. Each function is a separate file named after the handler.
 
 Each function must be created as a separate Lambda function in the AWS Console. The handler name for every function is `main` (the exported handler), so the Handler field would be `index.main` (since esbuild outputs them as `index.js`).
 
@@ -437,7 +487,7 @@ To create each function:
 5. Architecture: x86_64
 6. Permissions: Use existing role `ai-student-support-lambda-role`
 7. Create
-8. Upload the zip file from `backend/dist/{function-name}/index.js`
+8. Upload the zip file from `backend/deployments/{group}/{name}.zip`
 9. Set the handler to `index.main`
 10. Configure timeout and memory per the table below
 11. Set all environment variables from `.env.example`
@@ -449,21 +499,26 @@ To create each function:
 | 3 | `ai-student-auth-verify-email` | `auth/verify-email.ts` | 512 MB | 30s | API Gateway |
 | 4 | `ai-student-auth-reset-password` | `auth/reset-password.ts` | 512 MB | 30s | API Gateway |
 | 5 | `ai-student-auth-refresh-token` | `auth/refresh-token.ts` | 512 MB | 30s | API Gateway |
-| 6 | `ai-student-chat-send-message` | `chat/send-message.ts` | 1024 MB | 120s | API Gateway |
-| 7 | `ai-student-chat-get-conversations` | `chat/get-conversations.ts` | 512 MB | 30s | API Gateway |
-| 8 | `ai-student-chat-get-conversation` | `chat/get-conversation.ts` | 512 MB | 30s | API Gateway |
-| 9 | `ai-student-chat-delete-conversation` | `chat/delete-conversation.ts` | 512 MB | 30s | API Gateway |
-| 10 | `ai-student-user-get-profile` | `user/get-profile.ts` | 512 MB | 30s | API Gateway |
-| 11 | `ai-student-user-update-profile` | `user/update-profile.ts` | 512 MB | 30s | API Gateway |
-| 12 | `ai-student-feedback-submit` | `feedback/submit-feedback.ts` | 512 MB | 30s | API Gateway |
-| 13 | `ai-student-feedback-get` | `feedback/get-feedback.ts` | 512 MB | 30s | API Gateway |
-| 14 | `ai-student-admin-list-users` | `admin/list-users.ts` | 512 MB | 30s | API Gateway |
-| 15 | `ai-student-admin-manage-user` | `admin/manage-user.ts` | 512 MB | 30s | API Gateway |
-| 16 | `ai-student-admin-get-analytics` | `admin/get-analytics.ts` | 512 MB | 30s | API Gateway |
-| 17 | `ai-student-admin-system-health` | `admin/system-health.ts` | 512 MB | 30s | API Gateway |
-| 18 | `ai-student-ai-process-async` | `ai/process-async.ts` | 1024 MB | 120s | SQS Trigger |
+| 6 | `ai-student-auth-resend-verification-code` | `auth/resend-verification-code.ts` | 512 MB | 30s | API Gateway |
+| 7 | `ai-student-chat-send-message` | `chat/send-message.ts` | 1024 MB | 120s | API Gateway |
+| 8 | `ai-student-chat-get-conversations` | `chat/get-conversations.ts` | 512 MB | 30s | API Gateway |
+| 9 | `ai-student-chat-get-conversation` | `chat/get-conversation.ts` | 512 MB | 30s | API Gateway |
+| 10 | `ai-student-chat-delete-conversation` | `chat/delete-conversation.ts` | 512 MB | 30s | API Gateway |
+| 11 | `ai-student-user-get-profile` | `user/get-profile.ts` | 512 MB | 30s | API Gateway |
+| 12 | `ai-student-user-update-profile` | `user/update-profile.ts` | 512 MB | 30s | API Gateway |
+| 13 | `ai-student-feedback-submit` | `feedback/submit-feedback.ts` | 512 MB | 30s | API Gateway |
+| 14 | `ai-student-feedback-get` | `feedback/get-feedback.ts` | 512 MB | 30s | API Gateway |
+| 15 | `ai-student-admin-list-users` | `admin/list-users.ts` | 512 MB | 30s | API Gateway |
+| 16 | `ai-student-admin-manage-user` | `admin/manage-user.ts` | 512 MB | 30s | API Gateway |
+| 17 | `ai-student-admin-get-analytics` | `admin/get-analytics.ts` | 512 MB | 30s | API Gateway |
+| 18 | `ai-student-admin-system-health` | `admin/system-health.ts` | 512 MB | 30s | API Gateway |
+| 19 | `ai-student-ai-process-async` | `ai/process-async.ts` | 1024 MB | 120s | SQS Trigger |
+| 20 | `eduportal-knowledge-base-presign-upload` | `knowledge-base/presign-upload.ts` | 256 MB | 30s | API Gateway |
+| 21 | `eduportal-knowledge-base-complete-upload` | `knowledge-base/complete-upload.ts` | 256 MB | 30s | API Gateway |
+| 22 | `eduportal-knowledge-base-list-documents` | `knowledge-base/list-documents.ts` | 256 MB | 30s | API Gateway |
+| 23 | `eduportal-knowledge-base-delete-document` | `knowledge-base/delete-document.ts` | 256 MB | 30s | API Gateway |
 
-**Function 18 (process-async) special trigger:** Instead of API Gateway, this function is triggered by the SQS FIFO queue. In the Lambda console, add the SQS trigger:
+**Function 19 (process-async) special trigger:** Instead of API Gateway, this function is triggered by the SQS FIFO queue. In the Lambda console, add the SQS trigger:
 - SQS queue: `ai-student-async-processing.fifo`
 - Batch size: 5
 - Enable trigger
@@ -499,6 +554,10 @@ Create the following resource tree and attach each to its corresponding Lambda f
 | `/user/profile` | PUT | `ai-student-user-update-profile` | Cognito Authorizer |
 | `/feedback` | POST | `ai-student-feedback-submit` | Cognito Authorizer |
 | `/feedback` | GET | `ai-student-feedback-get` | Cognito Authorizer |
+| `/knowledge-base/documents` | GET | `eduportal-knowledge-base-list-documents` | Cognito Authorizer |
+| `/knowledge-base/documents` | DELETE | `eduportal-knowledge-base-delete-document` | Cognito Authorizer (admin role in Lambda) |
+| `/knowledge-base/presign-upload` | POST | `eduportal-knowledge-base-presign-upload` | Cognito Authorizer (admin role in Lambda) |
+| `/knowledge-base/complete-upload` | POST | `eduportal-knowledge-base-complete-upload` | Cognito Authorizer (admin role in Lambda) |
 | `/admin/users` | GET | `ai-student-admin-list-users` | Cognito Authorizer |
 | `/admin/users/{id}` | PUT | `ai-student-admin-manage-user` | Cognito Authorizer |
 | `/admin/analytics` | GET | `ai-student-admin-get-analytics` | Cognito Authorizer |
@@ -721,6 +780,20 @@ Attach a customer-managed policy with the following permissions:
         "cognito-idp:AdminUpdateUserAttributes"
       ],
       "Resource": "arn:aws:cognito-idp:us-east-1:ACCOUNT_ID:userpool/us-east-1_XXXXXXXXX"
+    },
+    {
+      "Sid": "KnowledgeBaseS3Access",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::eduportal-azubi-success-knowledge-base",
+        "arn:aws:s3:::eduportal-azubi-success-knowledge-base/*"
+      ]
     },
     {
       "Sid": "CloudWatchMetrics",

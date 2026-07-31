@@ -14,6 +14,11 @@ export default component$(() => {
   const errors = useStore<Record<string, string>>({});
   const isSubmitting = useSignal(false);
   const submitError = useSignal("");
+  const oauthNotice = useSignal("");
+
+  const handleOAuth = $((provider: string) => {
+    oauthNotice.value = `${provider} sign-in is not configured yet. Please use your email and password.`;
+  });
 
   const handleSubmit = $(async () => {
     submitError.value = "";
@@ -27,8 +32,8 @@ export default component$(() => {
     try {
       await auth.login(formData.email, formData.password);
       navigate("/dashboard");
-    } catch {
-      submitError.value = "Invalid email or password. Please try again.";
+    } catch (err: any) {
+      submitError.value = err?.message || "Invalid email or password. Please try again.";
     } finally {
       isSubmitting.value = false;
     }
@@ -54,8 +59,14 @@ export default component$(() => {
               {submitError.value}
             </div>
           )}
+          {oauthNotice.value && (
+            <div class="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-400" role="alert">
+              {oauthNotice.value}
+            </div>
+          )}
 
           <form
+            preventdefault:submit
             onSubmit$={(e) => {
               e.preventDefault();
               handleSubmit();
@@ -146,6 +157,7 @@ export default component$(() => {
             <button
               class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-surface-secondary transition-colors text-sm font-medium text-text-primary"
               aria-label="Sign in with Google"
+              onClick$={() => handleOAuth("Google")}
             >
               <ChromeIcon class="h-5 w-5" />
               Google
@@ -153,6 +165,7 @@ export default component$(() => {
             <button
               class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-surface-secondary transition-colors text-sm font-medium text-text-primary"
               aria-label="Sign in with GitHub"
+              onClick$={() => handleOAuth("GitHub")}
             >
               <GithubIcon class="h-5 w-5" />
               GitHub

@@ -40,7 +40,8 @@ export async function apiClient<T = unknown>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: "An error occurred" }));
-    throw new ApiError(response.status, error.message || "Request failed");
+    const message = error?.message || error?.error?.message || "Request failed";
+    throw new ApiError(response.status, message);
   }
 
   if (response.status === 204) {

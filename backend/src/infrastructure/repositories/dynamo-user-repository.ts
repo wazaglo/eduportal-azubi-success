@@ -26,7 +26,7 @@ export class DynamoUserRepository implements UserRepository {
       enrollmentYear: input.enrollmentYear,
       courseOfStudy: input.courseOfStudy,
       isEmailVerified: false,
-      isActive: false,
+      isActive: input.isActive ?? true,
       cognitoSub: input.cognitoSub,
       createdAt: now,
       updatedAt: now,

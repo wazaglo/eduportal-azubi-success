@@ -1,4 +1,4 @@
-import { component$ } from "@builder.io/qwik";
+import { component$, useSignal } from "@builder.io/qwik";
 import { useLocation } from "@builder.io/qwik-city";
 import { MoonIcon, SunIcon, BellIcon, MenuIcon, GraduationCapIcon } from "lucide-qwik";
 import { useTheme } from "~/stores/theme-store";
@@ -14,6 +14,7 @@ export const Header = component$<HeaderProps>(({ onMenuToggle$, class: className
   const theme = useTheme();
   const auth = useAuth();
   const location = useLocation();
+  const notificationsOpen = useSignal(false);
 
   const getTitle = (): string => {
     const path = location.url.pathname;
@@ -52,7 +53,7 @@ export const Header = component$<HeaderProps>(({ onMenuToggle$, class: className
           </h1>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="relative flex items-center gap-2">
           <button
             onClick$={() => (theme.isDark.value = !theme.isDark.value)}
             class="p-2 rounded-lg hover:bg-surface-secondary transition-colors text-text-secondary hover:text-text-primary"
@@ -62,12 +63,25 @@ export const Header = component$<HeaderProps>(({ onMenuToggle$, class: className
           </button>
 
           <button
+            onClick$={() => (notificationsOpen.value = !notificationsOpen.value)}
             class="p-2 rounded-lg hover:bg-surface-secondary transition-colors text-text-secondary hover:text-text-primary relative"
             aria-label="Notifications"
+            aria-expanded={notificationsOpen.value}
           >
             <BellIcon class="h-5 w-5" />
             <span class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-surface" />
           </button>
+
+          {notificationsOpen.value && (
+            <div class="absolute right-0 top-12 z-40 w-80 rounded-2xl border border-border bg-surface shadow-lg overflow-hidden">
+              <div class="px-4 py-3 border-b border-border">
+                <p class="text-sm font-semibold text-text-primary">Notifications</p>
+              </div>
+              <div class="p-4 text-sm text-text-muted">
+                No new notifications yet. You'll be notified here about replies and system updates.
+              </div>
+            </div>
+          )}
 
           {auth.state.user && (
             <div class="flex items-center gap-2 pl-2 border-l border-border">
