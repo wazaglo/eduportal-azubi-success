@@ -93,6 +93,7 @@ export class AuthService {
       email: input.email,
       fullName: input.fullName,
       role: input.role ?? 'student',
+      isActive: true,
       level: input.level,
       department: input.department,
       enrollmentYear: input.enrollmentYear,
@@ -135,12 +136,7 @@ export class AuthService {
         throw new AuthenticationError('Account is deactivated');
       }
 
-      const tokens: TokenResult = {
-        accessToken: authResult.AuthenticationResult?.AccessToken ?? '',
-        refreshToken: authResult.AuthenticationResult?.RefreshToken,
-        idToken: authResult.AuthenticationResult?.IdToken,
-        expiresIn: authResult.AuthenticationResult?.ExpiresIn ?? 3600,
-      };
+      const tokens = await this.generateTokens(user);
 
       await this.analyticsRepo.create({
         eventType: 'user_login',
@@ -218,21 +214,17 @@ export class AuthService {
 
   async refreshToken(refreshTokenValue: string): Promise<TokenResult> {
     try {
-      const authCmd = new InitiateAuthCommand({
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        ClientId: COGNITO.CLIENT_ID,
-        AuthParameters: {
-          REFRESH_TOKEN: refreshTokenValue,
-        },
-      });
+      const decoded = jwt.verify(refreshTokenValue, JWT.SECRET) as { userId?: string; type?: string };
+      if (!decoded.userId || decoded.type !== 'refresh') {
+        throw new Error('Invalid refresh token');
+      }
 
-      const result = await cognitoClient.send(authCmd);
+      const user = await this.userRepo.findById(decoded.userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
 
-      return {
-        accessToken: result.AuthenticationResult?.AccessToken ?? '',
-        idToken: result.AuthenticationResult?.IdToken,
-        expiresIn: result.AuthenticationResult?.ExpiresIn ?? 3600,
-      };
+      return await this.generateTokens(user);
     } catch (error: any) {
       logger.error('Token refresh failed', { error: error.message });
       throw new AuthenticationError('Token refresh failed');

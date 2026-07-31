@@ -32,6 +32,7 @@ export interface CreateUserInput {
   department?: string;
   enrollmentYear?: number;
   courseOfStudy?: string;
+  isActive?: boolean;
   cognitoSub: string;
 }
 
