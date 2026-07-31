@@ -64,6 +64,7 @@ export async function listDocuments(params?: {
   subject?: string;
   strand?: string;
   substrand?: string;
+  limit?: number;
 }): Promise<KnowledgeDocument[]> {
   const res = await api.get<{ data: KnowledgeDocument[] }>("/knowledge-base/documents", {
     params: Object.fromEntries(

@@ -27,7 +27,7 @@ export default component$(() => {
 
   useVisibleTask$(async () => {
     try {
-      documents.value = await listDocuments();
+      documents.value = await listDocuments({ limit: 1000 });
     } catch {
       loadError.value = "Failed to load the knowledge base. Please sign in again.";
     }

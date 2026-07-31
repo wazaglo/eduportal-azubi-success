@@ -42,7 +42,7 @@ export default component$(() => {
 
   useVisibleTask$(async () => {
     try {
-      documents.value = await listDocuments();
+      documents.value = await listDocuments({ limit: 1000 });
     } catch {
       uploadError.value = "Failed to load documents. Please sign in again.";
     }
@@ -75,7 +75,7 @@ export default component$(() => {
       try {
         await uploadToKnowledgeBase(file, uploadMeta);
         uploadNotice.value = `Uploaded "${file.name}" successfully.`;
-        documents.value = await listDocuments();
+        documents.value = await listDocuments({ limit: 1000 });
       } catch (err: any) {
         uploadError.value = err?.message || "Upload failed. Please try again.";
         uploadNotice.value = "";
@@ -90,7 +90,7 @@ export default component$(() => {
     uploadError.value = "";
     try {
       await deleteDocument(doc.documentId, doc.s3Key);
-      documents.value = await listDocuments();
+      documents.value = await listDocuments({ limit: 1000 });
       uploadNotice.value = `Deleted "${doc.fileName}".`;
       setTimeout(() => (uploadNotice.value = ""), 4000);
     } catch (err: any) {

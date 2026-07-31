@@ -60,7 +60,7 @@ export class DynamoKnowledgeRepository implements KnowledgeRepository {
   }
 
   async list(filters: KnowledgeListFilters = {}): Promise<KnowledgeDocument[]> {
-    const limit = filters.limit ?? 100;
+    const limit = filters.limit ?? 1000;
 
     if (filters.subject) {
       const result = await this.db.send(new QueryCommand({

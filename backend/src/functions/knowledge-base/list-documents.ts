@@ -11,7 +11,7 @@ const listSchema = z.object({
   subject: z.string().optional(),
   strand: z.string().optional(),
   substrand: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(1000).default(1000),
 });
 
 const repo = new DynamoKnowledgeRepository();
