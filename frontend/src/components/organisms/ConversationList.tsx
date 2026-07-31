@@ -40,7 +40,7 @@ export const ConversationList = component$<ConversationListProps>(({ class: clas
           <SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
           <input
             type="search"
-            placeholder="SearchIcon conversations..."
+            placeholder="Search conversations..."
             value={chat.state.searchQuery}
             onInput$={(e: any) => chat.setSearchQuery(e.target.value)}
             class={[

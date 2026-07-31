@@ -1,4 +1,4 @@
-import { component$, useSignal } from "@builder.io/qwik";
+import { component$, useSignal, $ } from "@builder.io/qwik";
 import { SearchIcon, FilterIcon, MoreHorizontalIcon, MailIcon, ShieldIcon, UserXIcon } from "lucide-qwik";
 import { Button } from "~/components/atoms/Button";
 import { Badge } from "~/components/atoms/Badge";
@@ -29,9 +29,11 @@ export default component$(() => {
   const searchQuery = useSignal("");
   const selectedRole = useSignal<"all" | "Student" | "Admin">("all");
   const selectedStatus = useSignal<"all" | "active" | "inactive" | "suspended">("all");
+  const userList = useSignal([...users]);
+  const notice = useSignal("");
 
   const filteredUsers = () => {
-    return users.filter((u) => {
+    return userList.value.filter((u) => {
       if (searchQuery.value) {
         const q = searchQuery.value.toLowerCase();
         if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
@@ -42,6 +44,11 @@ export default component$(() => {
     });
   };
 
+  const showNotice = $((msg: string) => {
+    notice.value = msg;
+    setTimeout(() => (notice.value = ""), 4000);
+  });
+
   return (
     <div class="space-y-6 max-w-7xl mx-auto">
       <div class="flex items-center justify-between">
@@ -49,15 +56,21 @@ export default component$(() => {
           <h1 class="text-2xl font-bold text-text-primary">User Management</h1>
           <p class="text-text-muted text-sm mt-1">Manage all registered users</p>
         </div>
-        <Button variant="primary">Invite User</Button>
+        <Button variant="primary" onClick$={() => showNotice("Invite sent to the user's email (simulated).")}>Invite User</Button>
       </div>
+
+      {notice.value && (
+        <div class="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-400" role="status">
+          {notice.value}
+        </div>
+      )}
 
       <div class="flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
           <SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
           <input
             type="search"
-            placeholder="SearchIcon users..."
+            placeholder="Search users..."
             value={searchQuery.value}
             onInput$={(e: any) => (searchQuery.value = e.target.value)}
             class={[
@@ -131,13 +144,38 @@ export default component$(() => {
                   <td class="px-4 py-3 text-sm text-text-secondary">{user.conversations}</td>
                   <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-1">
-                      <button class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors" aria-label="Send email">
+                      <button
+                        class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors"
+                        aria-label="Send email"
+                        onClick$={() => showNotice(`Email draft opened for ${user.email} (simulated).`)}
+                      >
                         <MailIcon class="h-4 w-4" />
                       </button>
-                      <button class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors" aria-label="Manage permissions">
+                      <button
+                        class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors"
+                        aria-label="Manage permissions"
+                        onClick$={() => {
+                          userList.value = userList.value.map((u) =>
+                            u.id === user.id
+                              ? { ...u, role: u.role === "Admin" ? "Student" : "Admin" }
+                              : u
+                          );
+                          showNotice(`Role toggled for ${user.name} to ${user.role === "Admin" ? "Student" : "Admin"}.`);
+                        }}
+                      >
                         <ShieldIcon class="h-4 w-4" />
                       </button>
-                      <button class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-text-muted hover:text-red-600 transition-colors" aria-label="Suspend user">
+                      <button
+                        class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-text-muted hover:text-red-600 transition-colors"
+                        aria-label="Suspend user"
+                        onClick$={() => {
+                          const next = user.status === "suspended" ? "active" : "suspended";
+                          userList.value = userList.value.map((u) =>
+                            u.id === user.id ? { ...u, status: next } : u
+                          );
+                          showNotice(`${user.name} ${next === "suspended" ? "suspended" : "reactivated"}.`);
+                        }}
+                      >
                         <UserXIcon class="h-4 w-4" />
                       </button>
                     </div>

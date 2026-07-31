@@ -1,4 +1,4 @@
-import { component$ } from "@builder.io/qwik";
+import { component$, useSignal } from "@builder.io/qwik";
 import {
   DatabaseIcon,
   UploadIcon,
@@ -15,14 +15,25 @@ import { Badge } from "~/components/atoms/Badge";
 import { Button } from "~/components/atoms/Button";
 
 export default component$(() => {
-  const documents = [
+  const documents = useSignal([
     { name: "Calculus_Full_Guide.pdf", subject: "Mathematics", size: "12.4 MB", status: "indexed", uploaded: "2026-07-28", downloads: 342 },
     { name: "Physics_Newton_Laws.docx", subject: "Physics", size: "3.2 MB", status: "indexed", uploaded: "2026-07-27", downloads: 284 },
     { name: "Data_Structures_Reference.pdf", subject: "Computer Science", size: "8.7 MB", status: "indexed", uploaded: "2026-07-26", downloads: 256 },
     { name: "DNA_Replication_Notes.pdf", subject: "Biology", size: "2.1 MB", status: "indexed", uploaded: "2026-07-25", downloads: 198 },
     { name: "Organic_Chemistry_Guide.pdf", subject: "Chemistry", size: "5.6 MB", status: "indexing", uploaded: "2026-07-24", downloads: 145 },
     { name: "Essay_Writing_Style.pdf", subject: "Literature", size: "1.8 MB", status: "indexed", uploaded: "2026-07-23", downloads: 167 },
-  ];
+  ]);
+  const searchQuery = useSignal("");
+  const uploadNotice = useSignal("");
+  const fileInput = useSignal<HTMLInputElement | undefined>(undefined);
+
+  const filteredDocuments = () => {
+    const q = searchQuery.value.toLowerCase();
+    if (!q) return documents.value;
+    return documents.value.filter((d) =>
+      d.name.toLowerCase().includes(q) || d.subject.toLowerCase().includes(q)
+    );
+  };
 
   return (
     <div class="space-y-6 max-w-7xl mx-auto">
@@ -33,11 +44,29 @@ export default component$(() => {
             Manage documents stored in S3. Upload, index, and organize learning materials for AI retrieval.
           </p>
         </div>
-        <Button variant="primary">
+        <Button variant="primary" onClick$={() => fileInput.value?.click()}>
           <UploadIcon class="h-4 w-4" />
           Upload to S3
         </Button>
+        <input
+          type="file"
+          ref={fileInput}
+          class="hidden"
+          onChange$={(e: any) => {
+            const file = e.target?.files?.[0];
+            if (file) {
+              uploadNotice.value = `Uploading "${file.name}" to S3... (simulated)`;
+              setTimeout(() => (uploadNotice.value = ""), 4000);
+            }
+          }}
+        />
       </div>
+
+      {uploadNotice.value && (
+        <div class="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-400" role="status">
+          {uploadNotice.value}
+        </div>
+      )}
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Total Documents" value="156" icon={FileTextIcon} trend="+12" trendUp color="primary" />
@@ -53,6 +82,8 @@ export default component$(() => {
             <input
               type="text"
               placeholder="Search documents..."
+              value={searchQuery.value}
+              onInput$={(e: any) => (searchQuery.value = e.target.value)}
               class="w-full pl-10 pr-4 py-2 rounded-xl border border-border bg-surface-secondary text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
             />
           </div>
@@ -72,7 +103,7 @@ export default component$(() => {
               </tr>
             </thead>
             <tbody>
-              {documents.map((doc) => (
+              {filteredDocuments().map((doc) => (
                 <tr key={doc.name} class="border-b border-border last:border-0 hover:bg-surface-secondary transition-colors">
                   <td class="p-4">
                     <div class="flex items-center gap-3">
@@ -93,10 +124,25 @@ export default component$(() => {
                   <td class="p-4 text-text-secondary">{doc.downloads}</td>
                   <td class="p-4 text-right">
                     <div class="flex items-center justify-end gap-2">
-                      <button class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors" title="View">
+                      <button
+                        class="p-2 rounded-lg hover:bg-surface-tertiary text-text-muted hover:text-text-primary transition-colors"
+                        title="View"
+                        onClick$={() => {
+                          uploadNotice.value = `Opening "${doc.name}" (simulated preview)`;
+                          setTimeout(() => (uploadNotice.value = ""), 4000);
+                        }}
+                      >
                         <ExternalLinkIcon class="h-4 w-4" />
                       </button>
-                      <button class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-text-muted hover:text-red-600 transition-colors" title="Delete">
+                      <button
+                        class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-text-muted hover:text-red-600 transition-colors"
+                        title="Delete"
+                        onClick$={() => {
+                          documents.value = documents.value.filter((d) => d.name !== doc.name);
+                          uploadNotice.value = `Deleted "${doc.name}"`;
+                          setTimeout(() => (uploadNotice.value = ""), 4000);
+                        }}
+                      >
                         <Trash2Icon class="h-4 w-4" />
                       </button>
                     </div>

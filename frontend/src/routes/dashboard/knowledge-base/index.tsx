@@ -10,6 +10,7 @@ import {
   ArrowRightIcon,
   FilterIcon,
   ChevronDownIcon,
+  UploadIcon,
 } from "lucide-qwik";
 import { Button } from "~/components/atoms/Button";
 
@@ -27,6 +28,8 @@ interface KnowledgeArticle {
 export default component$(() => {
   const searchQuery = useSignal("");
   const selectedSubject = useSignal("All");
+  const uploadFile = useSignal<HTMLInputElement | undefined>(undefined);
+  const uploadNotice = useSignal("");
 
   const articles: KnowledgeArticle[] = [
     {
@@ -198,11 +201,26 @@ export default component$(() => {
               Materials are stored securely in S3 and indexed for AI retrieval.
             </p>
           </div>
-          <Button variant="primary">
-            <DatabaseIcon class="h-4 w-4" />
+          <Button variant="primary" onClick$={() => uploadFile.value?.click()}>
+            <UploadIcon class="h-4 w-4" />
             Upload to S3
           </Button>
+          <input
+            type="file"
+            ref={uploadFile}
+            accept=".pdf,.doc,.docx,.txt,.md"
+            class="hidden"
+            onChange$={() => {
+              uploadNotice.value = `Uploading ${uploadFile.value?.files?.[0]?.name ?? "file"} to S3 (simulated).`;
+              setTimeout(() => (uploadNotice.value = ""), 4000);
+            }}
+          />
         </div>
+        {uploadNotice.value && (
+          <p class="text-sm text-primary-700 dark:text-primary-300 mt-2">
+            {uploadNotice.value}
+          </p>
+        )}
       </div>
     </div>
   );

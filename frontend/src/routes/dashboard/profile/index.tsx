@@ -17,6 +17,13 @@ export default component$(() => {
     email: auth.state.user?.email || "john@example.com",
     bio: "Computer Science student passionate about AI and machine learning.",
   });
+  const avatarInput = useSignal<HTMLInputElement | undefined>(undefined);
+  const notificationPrefs = useSignal({
+    "Email notifications": true,
+    "Push notifications": true,
+    "Study reminders": true,
+    "Weekly summary": true,
+  });
 
   const securityForm = useStore({
     currentPassword: "",
@@ -52,9 +59,20 @@ export default component$(() => {
             <button
               class="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
               aria-label="Change avatar"
+              onClick$={() => avatarInput.value?.click()}
             >
               <CameraIcon class="h-5 w-5 text-white" />
             </button>
+            <input
+              type="file"
+              ref={avatarInput}
+              accept="image/*"
+              class="hidden"
+              onChange$={() => {
+                saved.value = true;
+                setTimeout(() => (saved.value = false), 3000);
+              }}
+            />
           </div>
           <div class="text-center sm:text-left">
             <h2 class="text-xl font-bold text-text-primary">{profileForm.name}</h2>
@@ -190,10 +208,24 @@ export default component$(() => {
                 </div>
                 <button
                   role="switch"
-                  aria-checked="true"
-                  class="relative h-6 w-11 rounded-full bg-primary-600 transition-colors"
+                  aria-checked={notificationPrefs.value[item.label as keyof typeof notificationPrefs.value]}
+                  onClick$={() => {
+                    const key = item.label as keyof typeof notificationPrefs.value;
+                    notificationPrefs.value = { ...notificationPrefs.value, [key]: !notificationPrefs.value[key] };
+                  }}
+                  class={[
+                    "relative h-6 w-11 rounded-full transition-colors",
+                    notificationPrefs.value[item.label as keyof typeof notificationPrefs.value]
+                      ? "bg-primary-600"
+                      : "bg-surface-tertiary",
+                  ].join(" ")}
                 >
-                  <span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
+                  <span
+                    class={[
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                      notificationPrefs.value[item.label as keyof typeof notificationPrefs.value] ? "right-0.5" : "left-0.5",
+                    ].join(" ")}
+                  />
                 </button>
               </div>
             ))}

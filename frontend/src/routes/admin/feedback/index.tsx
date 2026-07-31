@@ -142,7 +142,7 @@ export default component$(() => {
           <SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
           <input
             type="search"
-            placeholder="SearchIcon feedback..."
+            placeholder="Search feedback..."
             value={searchQuery.value}
             onInput$={(e: any) => (searchQuery.value = e.target.value)}
             class={[
