@@ -4,10 +4,12 @@ import {
   useContextProvider,
   useContext,
   useStore,
+  useVisibleTask$,
   Slot,
   $,
   type QRL,
 } from "@builder.io/qwik";
+import { api } from "~/utils/api-client";
 
 export interface KnowledgeSource {
   title: string;
@@ -31,6 +33,7 @@ export interface Conversation {
   updatedAt: number;
   unread: boolean;
   messages: Message[];
+  messageCount?: number;
 }
 
 export interface ChatState {
@@ -42,10 +45,11 @@ export interface ChatState {
 
 export interface ChatStore {
   state: ChatState;
-  sendMessage: QRL<(content: string) => void>;
-  selectConversation: QRL<(id: string) => void>;
+  loadConversations: QRL<() => Promise<void>>;
+  sendMessage: QRL<(content: string) => Promise<void>>;
+  selectConversation: QRL<(id: string) => Promise<void>>;
   createConversation: QRL<() => void>;
-  deleteConversation: QRL<(id: string) => void>;
+  deleteConversation: QRL<(id: string) => Promise<void>>;
   setSearchQuery: QRL<(query: string) => void>;
 }
 
@@ -55,88 +59,85 @@ export function useChat(): ChatStore {
   return useContext(ChatContext);
 }
 
+interface BackendConversation {
+  conversationId: string;
+  title: string;
+  status: string;
+  queryType?: string;
+  summary?: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string;
+}
+
+interface BackendMessage {
+  messageId: string;
+  conversationId: string;
+  sender: "user" | "ai" | "system";
+  content: string;
+  status: string;
+  queryType?: string;
+  metadata?: {
+    source?: string;
+    cached?: boolean;
+    documentTitle?: string;
+  };
+  createdAt: string;
+}
+
+interface SendMessageResponse {
+  userMessage: BackendMessage;
+  aiMessage?: BackendMessage;
+  conversation: BackendConversation;
+  cached: boolean;
+  source: string;
+  processingTimeMs: number;
+}
+
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15);
 }
 
-const DEMO_CONVERSATIONS: Conversation[] = [
-  {
-    id: "1",
-    title: "Homework Help - Calculus",
-    lastMessage: "Can you help me understand derivatives?",
-    updatedAt: Date.now() - 3600000,
-    unread: true,
-    messages: [
-      {
-        id: "m1",
-        content: "Can you help me understand derivatives?",
-        role: "user",
-        timestamp: Date.now() - 7200000,
-        conversationId: "1",
-      },
-      {
-        id: "m2",
-        content: "Of course! Derivatives measure the rate of change of a function. Think of it as finding the slope at any point on a curve. The derivative of x^n is n*x^(n-1). Would you like me to walk through an example?",
-        role: "assistant",
-        timestamp: Date.now() - 7100000,
-        conversationId: "1",
-        sources: [
-          {
-            title: "Introduction to Calculus: Derivatives & Integrals",
-            snippet: "Section 2.1 - The derivative as a rate of change",
-          },
-          {
-            title: "Calculus Reference Sheet",
-            snippet: "Derivative rules and formulas",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: "2",
-    title: "Study Tips",
-    lastMessage: "What are effective study techniques?",
-    updatedAt: Date.now() - 86400000,
+function parseTimestamp(value: string | undefined): number {
+  if (!value) return Date.now();
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? Date.now() : ts;
+}
+
+function mapBackendMessage(msg: BackendMessage): Message {
+  const sources: KnowledgeSource[] = [];
+  if (msg.metadata?.documentTitle) {
+    sources.push({
+      title: msg.metadata.documentTitle,
+      snippet: msg.metadata.source ? `Source: ${msg.metadata.source}` : "Source: knowledge base",
+    });
+  }
+  return {
+    id: msg.messageId,
+    content: msg.content,
+    role: msg.sender === "user" ? "user" : "assistant",
+    timestamp: parseTimestamp(msg.createdAt),
+    conversationId: msg.conversationId,
+    ...(sources.length ? { sources } : {}),
+  };
+}
+
+function mapBackendConversation(conv: BackendConversation): Conversation {
+  return {
+    id: conv.conversationId,
+    title: conv.title || "New Conversation",
+    lastMessage: conv.title,
+    updatedAt: parseTimestamp(conv.lastMessageAt || conv.updatedAt),
     unread: false,
-    messages: [
-      {
-        id: "m3",
-        content: "What are effective study techniques?",
-        role: "user",
-        timestamp: Date.now() - 90000000,
-        conversationId: "2",
-      },
-      {
-        id: "m4",
-        content: "Here are some evidence-based study techniques:\n1. Active Recall - Test yourself regularly\n2. Spaced Repetition - Review material at increasing intervals\n3. Pomodoro Technique - Study in 25-min focused sessions\n4. Interleaving - Mix different topics during study sessions",
-        role: "assistant",
-        timestamp: Date.now() - 89900000,
-        conversationId: "2",
-      },
-    ],
-  },
-  {
-    id: "3",
-    title: "Essay Review",
-    lastMessage: "Can you check my essay structure?",
-    updatedAt: Date.now() - 172800000,
-    unread: false,
-    messages: [
-      {
-        id: "m5",
-        content: "Can you check my essay structure?",
-        role: "user",
-        timestamp: Date.now() - 180000000,
-        conversationId: "3",
-      },
-    ],
-  },
-];
+    messages: [],
+    messageCount: conv.messageCount ?? 0,
+  };
+}
 
 export const ChatProvider = component$(() => {
   const state = useStore<ChatState>({
-    conversations: DEMO_CONVERSATIONS,
+    conversations: [],
     activeConversation: null,
     isTyping: false,
     searchQuery: "",
@@ -144,18 +145,28 @@ export const ChatProvider = component$(() => {
 
   const store: ChatStore = {
     state,
-    sendMessage: $((content: string) => {
+    loadConversations: $<() => Promise<void>>(async () => {
+      try {
+        const res = await api.get<{ data: BackendConversation[] }>("/chat/conversations", {
+          params: { limit: "100" },
+        });
+        state.conversations = (res.data ?? []).map(mapBackendConversation);
+      } catch {
+        state.conversations = [];
+      }
+    }),
+    sendMessage: $<(content: string) => Promise<void>>(async (content) => {
       if (!state.activeConversation) {
-        const newConv: Conversation = {
-          id: generateId(),
+        const placeholder: Conversation = {
+          id: "",
           title: content.substring(0, 40) + (content.length > 40 ? "..." : ""),
           lastMessage: content,
           updatedAt: Date.now(),
           unread: false,
           messages: [],
         };
-        state.conversations.unshift(newConv);
-        state.activeConversation = newConv;
+        state.conversations.unshift(placeholder);
+        state.activeConversation = placeholder;
       }
 
       const userMsg: Message = {
@@ -170,28 +181,74 @@ export const ChatProvider = component$(() => {
       state.activeConversation!.updatedAt = Date.now();
       state.isTyping = true;
 
-      setTimeout(() => {
-        const aiMsg: Message = {
+      try {
+        const res = await api.post<{ data: SendMessageResponse }>("/chat/send", {
+          content,
+          requireAsync: false,
+          ...(state.activeConversation!.id ? { conversationId: state.activeConversation!.id } : {}),
+        });
+        const { aiMessage, conversation } = res.data;
+
+        if (!state.activeConversation!.id) {
+          state.activeConversation!.id = conversation.conversationId;
+        }
+
+        const aiMsg: Message | null = aiMessage ? mapBackendMessage(aiMessage) : null;
+        if (aiMsg) {
+          state.activeConversation!.messages = [...state.activeConversation!.messages, aiMsg];
+          state.activeConversation!.lastMessage = aiMsg.content;
+        }
+
+        const index = state.conversations.findIndex((c) => c.id === conversation.conversationId);
+        const mapped = mapBackendConversation(conversation);
+        mapped.messages = state.activeConversation!.messages;
+        if (aiMsg) mapped.lastMessage = aiMsg.content;
+        if (index >= 0) {
+          state.conversations[index] = mapped;
+        } else {
+          state.conversations.unshift(mapped);
+        }
+        state.activeConversation = mapped;
+        state.activeConversation.updatedAt = Date.now();
+      } catch {
+        const fallback: Message = {
           id: generateId(),
-          content: "That's a great question! Let me help you with that. I'm analyzing your query and will provide a detailed response shortly.",
+          content: "Sorry, I couldn't reach the assistant right now. Please try again.",
           role: "assistant",
           timestamp: Date.now(),
           conversationId: state.activeConversation!.id,
         };
-        state.activeConversation!.messages = [...state.activeConversation!.messages, aiMsg];
+        state.activeConversation!.messages = [...state.activeConversation!.messages, fallback];
+        state.activeConversation!.lastMessage = fallback.content;
+      } finally {
         state.isTyping = false;
-      }, 1500);
+      }
     }),
-    selectConversation: $((id: string) => {
-      const conv = state.conversations.find((c) => c.id === id);
-      if (conv) {
-        state.activeConversation = conv;
-        conv.unread = false;
+    selectConversation: $<(id: string) => Promise<void>>(async (id) => {
+      const local = state.conversations.find((c) => c.id === id);
+      try {
+        const res = await api.get<{ data: { conversation: BackendConversation; messages: BackendMessage[] } }>(
+          `/chat/conversations/${id}`
+        );
+        const { conversation, messages } = res.data;
+        const mapped = mapBackendConversation(conversation);
+        mapped.messages = (messages ?? []).map(mapBackendMessage);
+        const last = mapped.messages[mapped.messages.length - 1];
+        if (last) mapped.lastMessage = last.content;
+        const index = state.conversations.findIndex((c) => c.id === id);
+        if (index >= 0) {
+          state.conversations[index] = mapped;
+        } else {
+          state.conversations.unshift(mapped);
+        }
+        state.activeConversation = mapped;
+      } catch {
+        if (local) state.activeConversation = local;
       }
     }),
     createConversation: $(() => {
       const newConv: Conversation = {
-        id: generateId(),
+        id: "",
         title: "New Conversation",
         lastMessage: "",
         updatedAt: Date.now(),
@@ -201,7 +258,14 @@ export const ChatProvider = component$(() => {
       state.conversations.unshift(newConv);
       state.activeConversation = newConv;
     }),
-    deleteConversation: $((id: string) => {
+    deleteConversation: $<(id: string) => Promise<void>>(async (id) => {
+      if (id) {
+        try {
+          await api.delete(`/chat/conversations/${id}`);
+        } catch {
+          // Ignore server-side failure; still remove from local state.
+        }
+      }
       state.conversations = state.conversations.filter((c) => c.id !== id);
       if (state.activeConversation?.id === id) {
         state.activeConversation = null;
@@ -211,6 +275,14 @@ export const ChatProvider = component$(() => {
       state.searchQuery = query;
     }),
   };
+
+  useVisibleTask$(() => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (token) {
+      store.loadConversations();
+    }
+  });
 
   useContextProvider(ChatContext, store);
 

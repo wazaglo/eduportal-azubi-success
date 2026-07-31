@@ -53,7 +53,7 @@ export const Sidebar = component$<SidebarProps>(({ class: className }) => {
   return (
     <aside
       class={[
-        "fixed left-0 top-0 z-40 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300",
+        "fixed left-0 top-0 z-40 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300 lg:relative lg:z-auto",
         collapsed.value ? "w-16" : "w-64",
         className,
       ].join(" ")}

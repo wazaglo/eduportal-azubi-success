@@ -156,7 +156,7 @@ export default component$(() => {
                         <ClockIcon class="h-3 w-3" />
                         {timeStr}
                       </span>
-                      <span>{conv.messages.length} messages</span>
+                      <span>{conv.messageCount ?? conv.messages.length} messages</span>
                     </div>
                   </Link>
                   <button
