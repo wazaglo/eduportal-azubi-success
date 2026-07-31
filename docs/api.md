@@ -567,6 +567,137 @@ Retrieve feedback submitted by the authenticated user. Supports pagination.
 
 ---
 
+## Knowledge Base Endpoints
+
+The knowledge base stores Ghana SHS curriculum documents (NaCCA) in S3, organized by `Year / Subject / Strand / Sub-Strand`. Chat answers can reference these documents.
+
+Requires `Bearer` token. Listing is available to any authenticated user; upload and delete require the `admin` role.
+
+### GET /knowledge-base/documents
+
+List documents, optionally filtered.
+
+**Query Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| year | string | - | Filter by level: `SHS1`, `SHS2`, `SHS3` |
+| subject | string | - | Filter by subject (e.g., `Integrated Science`) |
+| strand | string | - | Filter by strand name |
+| substrand | string | - | Filter by sub-strand name |
+| limit | integer | 1000 | Max items to return (1-1000) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "data": [
+    {
+      "documentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+      "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+      "year": "SHS1",
+      "subject": "Integrated Science",
+      "strand": "Vigour Behind Life",
+      "substrand": "Consumer Electronics",
+      "size": 3549,
+      "contentType": "text/markdown",
+      "status": "indexed",
+      "uploadedBy": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "uploadedAt": "2026-07-31T14:00:00Z",
+      "downloads": 0
+    }
+  ]
+}
+```
+
+### POST /knowledge-base/presign-upload
+
+*Admin only.* Obtain a presigned S3 PUT URL for a new document. After uploading the file to that URL, call `complete-upload`.
+
+**Request:**
+
+```json
+{
+  "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+  "contentType": "text/markdown",
+  "year": "SHS1",
+  "subject": "Integrated Science",
+  "strand": "Vigour Behind Life",
+  "substrand": "Consumer Electronics"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileName | string | Yes | File name (max 255 chars) |
+| contentType | string | Yes | MIME type of the file |
+| year | string | Yes | `SHS1`, `SHS2`, or `SHS3` |
+| subject | string | Yes | One of the 28 supported subjects |
+| strand | string | Yes | Strand name (max 120 chars) |
+| substrand | string | Yes | Sub-strand name (max 120 chars) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "data": {
+    "uploadUrl": "https://eduportal-azubi-success-knowledge-base.s3.eu-west-1.amazonaws.com/knowledge/SHS1/...?X-Amz-Signature=...",
+    "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+    "expiresIn": 300,
+    "uploadedBy": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+}
+```
+
+The upload URL expires after 300 seconds. Spaces in `year`/`subject`/`strand`/`substrand` are replaced with underscores in the S3 key.
+
+### POST /knowledge-base/complete-upload
+
+*Admin only.* Register document metadata after the file has been uploaded to S3.
+
+**Request:**
+
+```json
+{
+  "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+  "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
+  "year": "SHS1",
+  "subject": "Integrated Science",
+  "strand": "Vigour Behind Life",
+  "substrand": "Consumer Electronics",
+  "size": 3549,
+  "contentType": "text/markdown"
+}
+```
+
+**Response** `201 Created` — returns the created document record.
+
+### DELETE /knowledge-base/documents
+
+*Admin only.* Delete a document from the knowledge base (removes both the S3 object and its metadata).
+
+**Request:**
+
+```json
+{
+  "documentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md"
+}
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "data": {
+    "deleted": true
+  }
+}
+```
+
+---
+
 ## Admin Endpoints
 
 Requires `Bearer` token with `admin` role.

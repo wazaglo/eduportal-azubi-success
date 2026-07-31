@@ -53,16 +53,17 @@ Before deploying any code, all AWS infrastructure must be created manually.
 
 Follow the complete guide at **[docs/aws-resources.md](aws-resources.md)** to provision:
 
-1. **DynamoDB** — 7 tables with GSIs
-2. **Cognito** — User pool, app client, domain
-3. **Bedrock** — Model access, guardrails (optional)
-4. **SQS** — FIFO queue + DLQ
-5. **SNS** — Alert topic + email subscription
-6. **SES** — Domain/email verification
-7. **IAM** — Lambda execution role with full policy
-8. **Lambda** — 18 functions (created after builds)
-9. **API Gateway** — REST API with Cognito authorizer
-10. **Amplify** — Frontend hosting app
+1. **DynamoDB** — 8 tables with GSIs (including `ai-student-knowledge`)
+2. **S3** — knowledge base bucket `eduportal-azubi-success-knowledge-base`
+3. **Cognito** — User pool, app client, domain
+4. **Bedrock** — Model access, guardrails (optional)
+5. **SQS** — FIFO queue + DLQ
+6. **SNS** — Alert topic + email subscription
+7. **SES** — Domain/email verification
+8. **IAM** — Lambda execution role with full policy (including S3 knowledge base access)
+9. **Lambda** — 23 functions (created after builds)
+10. **API Gateway** — REST API with Cognito authorizer
+11. **Amplify** — Frontend hosting app
 
 > **Important:** Resource creation order matters — IAM roles and DynamoDB tables must exist before Lambda functions. All resources listed above must be created before proceeding to Step 3.
 
@@ -73,70 +74,55 @@ Follow the complete guide at **[docs/aws-resources.md](aws-resources.md)** to pr
 ```bash
 cd backend
 npm install
-npm run build
+npm run build:all
 ```
 
-This runs the esbuild bundler, producing one zip file per Lambda function in `backend/dist/`:
+This runs the esbuild bundler, producing one zip file per Lambda function in `backend/deployments/`:
 
 ```
-backend/dist/
+backend/deployments/
 ├── auth/
-│   ├── register/
-│   │   └── index.js
-│   ├── login/
-│   │   └── index.js
-│   ├── verify-email/
-│   │   └── index.js
-│   ├── reset-password/
-│   │   └── index.js
-│   └── refresh-token/
-│       └── index.js
+│   ├── register.zip
+│   ├── login.zip
+│   ├── verify-email.zip
+│   ├── reset-password.zip
+│   ├── refresh-token.zip
+│   └── resend-verification-code.zip
 ├── chat/
-│   ├── send-message/
-│   │   └── index.js
-│   ├── get-conversations/
-│   │   └── index.js
-│   ├── get-conversation/
-│   │   └── index.js
-│   └── delete-conversation/
-│       └── index.js
+│   ├── send-message.zip
+│   ├── get-conversations.zip
+│   ├── get-conversation.zip
+│   └── delete-conversation.zip
 ├── user/
-│   ├── get-profile/
-│   │   └── index.js
-│   └── update-profile/
-│       └── index.js
+│   ├── get-profile.zip
+│   └── update-profile.zip
 ├── feedback/
-│   ├── submit-feedback/
-│   │   └── index.js
-│   └── get-feedback/
-│       └── index.js
+│   ├── submit-feedback.zip
+│   └── get-feedback.zip
+├── knowledge-base/
+│   ├── presign-upload.zip
+│   ├── complete-upload.zip
+│   ├── list-documents.zip
+│   └── delete-document.zip
 ├── admin/
-│   ├── list-users/
-│   │   └── index.js
-│   ├── manage-user/
-│   │   └── index.js
-│   ├── get-analytics/
-│   │   └── index.js
-│   └── system-health/
-│       └── index.js
+│   ├── list-users.zip
+│   ├── manage-user.zip
+│   ├── get-analytics.zip
+│   └── system-health.zip
 └── ai/
-    └── process-async/
-        └── index.js
+    └── process-async.zip
 ```
 
 ---
 
 ## 4. Upload Lambda Zip Files
 
-For each of the 18 Lambda functions:
+For each of the 23 Lambda functions:
 
 1. Navigate to AWS Console > Lambda > [function name]
 2. Go to the **Code** tab
 3. Click **Upload from** > `.zip file`
-4. Select the appropriate file from `backend/dist/{handler}/index.js`
-   - Note: esbuild outputs `index.js` files, not individual zip files
-   - You can zip each handler directory: `cd backend/dist/{handler} && zip -r ../{handler}.zip .`
-   - Then upload the resulting zip file
+4. Select the appropriate zip from `backend/deployments/{group}/{name}.zip`
 5. Set the **Handler** field to: `index.main`
 6. Click **Save**
 
@@ -147,11 +133,11 @@ For each of the 18 Lambda functions:
 | Runtime | Node.js 20.x |
 | Architecture | x86_64 |
 | Handler | `index.main` |
-| Memory | 512 MB (most) / 1024 MB (send-message, process-async) |
+| Memory | 512 MB (most) / 1024 MB (send-message, process-async) / 256 MB (knowledge-base) |
 | Timeout | 30s (most) / 120s (send-message, process-async) |
 | IAM Role | `ai-student-support-lambda-role` |
 
-**Set environment variables** for each function (all 22 variables from `.env.example`).
+**Set environment variables** for each function (all variables from `.env.example`).
 
 For the **process-async** function only, add an SQS trigger:
 1. Go to the function > Configuration > Triggers > Add trigger
@@ -230,16 +216,16 @@ frontend:
 
 ## 8. Set Environment Variables
 
-### Lambda Functions (18 total)
+### Lambda Functions (23 total)
 
-Every Lambda function must have the same set of environment variables. In the Lambda console, under Configuration > Environment variables, set all 22 variables from `.env.example`.
+Every Lambda function must have the same set of environment variables. In the Lambda console, under Configuration > Environment variables, set all variables from `.env.example`.
 
 Key variables to configure:
 
 | Variable | How to get the value |
 |----------|---------------------|
-| `AWS_REGION` | Your deployment region (e.g., `us-east-1`) |
-| `TABLE_USERS` through `TABLE_AUDIT_LOG` | DynamoDB table names you created |
+| `AWS_REGION` | Your deployment region (e.g., `eu-west-1`) |
+| `TABLE_USERS` through `TABLE_KNOWLEDGE` | DynamoDB table names you created |
 | `COGNITO_USER_POOL_ID` | Cognito console > User pool ID |
 | `COGNITO_CLIENT_ID` | Cognito console > App client ID |
 | `JWT_SECRET` | Generate a random string (e.g., `openssl rand -hex 32`) |
@@ -248,8 +234,8 @@ Key variables to configure:
 | `ASYNC_QUEUE_URL` | SQS queue URL |
 | `AI_PROVIDER` | `bedrock` |
 | `BEDROCK_GUARDRAIL_ID` | (Optional) Guardrail ID |
-| `KNOWLEDGE_BASE_ID` | (Optional) Knowledge base ID |
-| `CORS_ORIGIN` | Amplify app URL (e.g., `https://main.xxxxx.amplifyapp.com`) |
+| `KNOWLEDGE_BUCKET` | S3 knowledge base bucket name (`eduportal-azubi-success-knowledge-base`) |
+| `CORS_ORIGIN` | Amplify app URL (e.g., `https://dev.xxxxx.amplifyapp.com`) |
 
 ### Amplify App
 

@@ -52,7 +52,17 @@ All backend components are serverless on AWS:
 
 ## Lambda Backend
 
-18 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
+23 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
+
+## Knowledge Base
+
+Curriculum materials are stored in an S3 bucket and referenced by the chat assistant:
+
+- **Bucket**: `eduportal-azubi-success-knowledge-base` (SSE-S3 AES-256, public access blocked)
+- **Layout**: `knowledge/{SHS1|SHS2|SHS3}/{Subject}/{Strand}/{Sub-Strand}/{file}`
+- **Metadata**: DynamoDB table `ai-student-knowledge` (documentId HASH; GSIs `SubjectIndex`, `YearIndex`)
+- **Seed data**: 140 documents across the 6 core subjects (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing) generated from the NaCCA Senior High School curriculum
+- Chat answers reference these documents; see [docs/architecture.md](docs/architecture.md) and [docs/api.md](docs/api.md)
 
 ## Auth Flow (Cognito)
 
@@ -101,6 +111,17 @@ Frontend ──► Cognito User Pool (login, tokens) ──► API Gateway (Cogn
 |--------|------|--------|-------------|
 | POST | `/feedback` | `eduportal-feedback-submit` | Submit feedback (messageId, rating 1-5; optional comment, category) |
 | GET | `/feedback` | `eduportal-feedback-get` | Get your feedback (limit, nextToken) |
+
+### Knowledge Base (JWT)
+
+| Method | Path | Lambda | Description |
+|--------|------|--------|-------------|
+| GET | `/knowledge-base/documents` | `eduportal-knowledge-base-list-documents` | List documents (year, subject, strand, substrand, limit) |
+| POST | `/knowledge-base/presign-upload` | `eduportal-knowledge-base-presign-upload` | Admin: get presigned S3 PUT URL (fileName, contentType, year, subject, strand, substrand) |
+| POST | `/knowledge-base/complete-upload` | `eduportal-knowledge-base-complete-upload` | Admin: register document metadata after S3 upload |
+| DELETE | `/knowledge-base/documents` | `eduportal-knowledge-base-delete-document` | Admin: delete document (documentId, s3Key) |
+
+Upload is restricted to the `admin` role; listing is available to any authenticated user.
 
 ### Admin (JWT + admin role)
 

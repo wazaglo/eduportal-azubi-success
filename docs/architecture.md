@@ -56,11 +56,12 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 1. User sends message via Qwik frontend → CloudFront → API Gateway
 2. API Gateway invokes Lambda with Cognito JWT authorizer
 3. Lambda checks DynamoDB cache for existing answer (multi-layer strategy)
-4. If cache miss, Lambda prepares context from knowledge base
-5. Lambda invokes Amazon Bedrock (Nova Lite for simple, Claude for complex)
-6. Guardrails filter unsafe content before response reaches user
-7. New response cached in DynamoDB for future reuse
-8. Analytics event recorded in DynamoDB
+4. If cache miss, Lambda searches the S3 knowledge base for a relevant document (`knowledge/{level}/` prefix) and uses its content as context
+5. If a KB document matches, its excerpt is returned as the answer and cached for reuse
+6. Otherwise Lambda invokes Amazon Bedrock (Nova Lite for simple, Claude for complex)
+7. Guardrails filter unsafe content before response reaches user
+8. New response cached in DynamoDB for future reuse
+9. Analytics event recorded in DynamoDB
 
 ## Component Descriptions
 
@@ -73,13 +74,13 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 - Responsive mobile-first design
 
 ### API Gateway + Lambda
-- REST API with 14 endpoints across 5 groups: Auth, Chat, User, Feedback, Admin
+- REST API with 23 endpoints across 6 groups: Auth, Chat, User, Feedback, Knowledge Base, Admin
 - Cognito User Pool authorizer for protected endpoints
 - Rate limiting via API Gateway throttling
 - Structured JSON logging
 - Dead-letter queue for failed async processing
 
-### DynamoDB Tables (7 tables)
+### DynamoDB Tables (8 tables)
 - **Users**: `pk` (userId), `sk` (metadata), GSI1 for email lookups
 - **Conversations**: `pk` (userId), `sk` (conversationId), GSI1 for query type
 - **Messages**: `pk` (conversationId), `sk` (timestamp), GSI1 for userId
@@ -87,6 +88,13 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 - **Feedback**: `pk` (userId), `sk` (timestamp), GSI1 for rating
 - **Analytics Events**: `pk` (date), `sk` (eventType), GSI1 for userId
 - **Audit Log**: `pk` (userId), `sk` (timestamp), GSI1 for action type
+- **Knowledge Documents**: `documentId` (HASH), GSIs `SubjectIndex` (subject → uploadedAt) and `YearIndex` (year → uploadedAt)
+
+### S3 Knowledge Base
+- Bucket: `eduportal-azubi-success-knowledge-base` (SSE-S3 AES-256, public access blocked)
+- Key layout: `knowledge/{SHS1|SHS2|SHS3}/{Subject}/{Strand}/{Sub-Strand}/{file}`
+- Seeds: 140 documents generated from NaCCA SHS curriculum covering the 6 core subjects
+- Admin uploads via presigned PUT URLs; chat lookup scans `knowledge/{level}/` for matching content
 
 ### Bedrock Integration
 - Abstract `AIProvider` interface decouples business logic from AI service
@@ -96,7 +104,7 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 - Automatic fallback to Claude Haiku if Claude Sonnet fails
 
 ### Cost Optimization
-- Multi-layer caching: DynamoDB cache → knowledge context → Bedrock
+- Multi-layer caching: DynamoDB cache → S3 knowledge base context → Bedrock
 - Async processing via SQS for non-urgent AI responses
 - Conversation summarization every 5 messages to reduce context length
 - Intelligent model routing (Nova Lite for routine, Claude for complex)
