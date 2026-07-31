@@ -54,6 +54,19 @@ All backend components are serverless on AWS:
 
 18 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
 
+## Auth Flow (Cognito)
+
+Amazon Cognito sits in front of the API as the **API Gateway authorizer**:
+
+```
+Frontend ──► Cognito User Pool (login, tokens) ──► API Gateway (Cognito authorizer) ──► Lambda
+```
+
+- **User Pool**: sign-up/sign-in, JWT/refresh tokens (`COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`)
+- **Authorizer**: `ai-student-support-cognito-authorizer` attached to all routes except `/auth/*`
+- **Lambda verification**: handlers self-verify the JWT against `JWT_SECRET` and check roles (`admin`) for admin endpoints
+- Full setup steps: `docs/aws-resources.md` §2
+
 ## API Reference
 
 ### Auth (public)
