@@ -1,8 +1,8 @@
 # eduportal-azubi-success
 
-AI-powered student support platform. Students ask academic questions and receive AI-generated responses.
+AI-powered student support platform. Students ask academic questions and receive answers sourced from the NaCCA curriculum knowledge base.
 
-Built as a serverless application on AWS. The frontend is a Qwik City SPA with mock data for standalone development.
+Built as a serverless application on AWS. The frontend is a Qwik City SPA.
 
 ## Branch Strategy
 
@@ -32,7 +32,7 @@ npm run dev -- --port 8081
 ## Project Structure
 
 ```
-├── frontend/          # Qwik City SPA (UI, stores, mock data)
+├── frontend/          # Qwik City SPA (UI, stores, API wiring)
 ├── backend/           # AWS Lambda handlers (serverless)
 ├── docker/            # Docker Compose for local dev
 ├── docs/              # Architecture and deployment docs
@@ -52,16 +52,17 @@ All backend components are serverless on AWS:
 
 ## Lambda Backend
 
-23 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
+24 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
 
 ## Knowledge Base
 
-Curriculum materials are stored in an S3 bucket and referenced by the chat assistant:
+Authentic NaCCA Senior High School curriculum PDFs (all 33 subjects) are parsed into searchable text sections and stored in S3, referenced by the chat assistant:
 
 - **Bucket**: `eduportal-azubi-success-knowledge-base` (SSE-S3 AES-256, public access blocked)
-- **Layout**: `knowledge/{SHS1|SHS2|SHS3}/{Subject}/{Strand}/{Sub-Strand}/{file}`
+- **Layout**: `knowledge/{Subject}/{Strand}/{file}` (year is stored per-document)
+- **Source PDFs**: `knowledge/sources/{Subject}/{Subject}-Curriculum.pdf` (downloadable via the API)
 - **Metadata**: DynamoDB table `ai-student-knowledge` (documentId HASH; GSIs `SubjectIndex`, `YearIndex`)
-- **Seed data**: 140 documents across the 6 core subjects (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing) generated from the NaCCA Senior High School curriculum
+- **Seed data**: 362 documents across all 33 subjects (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing, Biology, Chemistry, Physics, History, Geography, Economics, French, Spanish, Arabic, and more)
 - Chat answers reference these documents; see [docs/architecture.md](docs/architecture.md) and [docs/api.md](docs/api.md)
 
 ## Auth Flow (Cognito)
@@ -117,6 +118,7 @@ Frontend ──► Cognito User Pool (login, tokens) ──► API Gateway (Cogn
 | Method | Path | Lambda | Description |
 |--------|------|--------|-------------|
 | GET | `/knowledge-base/documents` | `eduportal-knowledge-base-list-documents` | List documents (year, subject, strand, substrand, limit) |
+| GET | `/knowledge-base/download-url` | `eduportal-knowledge-base-get-download-url` | Get a presigned URL to download a subject's curriculum PDF |
 | POST | `/knowledge-base/presign-upload` | `eduportal-knowledge-base-presign-upload` | Admin: get presigned S3 PUT URL (fileName, contentType, year, subject, strand, substrand) |
 | POST | `/knowledge-base/complete-upload` | `eduportal-knowledge-base-complete-upload` | Admin: register document metadata after S3 upload |
 | DELETE | `/knowledge-base/documents` | `eduportal-knowledge-base-delete-document` | Admin: delete document (documentId, s3Key) |
