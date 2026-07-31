@@ -72,6 +72,7 @@ export default component$(() => {
           )}
 
           <form
+            preventdefault:submit
             onSubmit$={(e) => {
               e.preventDefault();
               handleSubmit();

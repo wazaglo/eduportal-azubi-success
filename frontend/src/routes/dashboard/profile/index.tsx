@@ -106,6 +106,7 @@ export default component$(() => {
       <div class="rounded-2xl border border-border bg-surface p-6">
         {activeTab.value === "profile" && (
           <form
+            preventdefault:submit
             onSubmit$={(e) => {
               e.preventDefault();
               handleProfileSave();
@@ -156,6 +157,7 @@ export default component$(() => {
 
         {activeTab.value === "security" && (
           <form
+            preventdefault:submit
             onSubmit$={(e) => {
               e.preventDefault();
               handleProfileSave();
