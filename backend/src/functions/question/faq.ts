@@ -11,19 +11,34 @@ import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema, paginationSchema } from '../../utils/validator';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
 
-const questionRepo = new DynamoQuestionRepository();
-const cacheService = new CacheService(new DynamoCacheRepository());
-const knowledgeService = new KnowledgeService(cacheService);
-const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
-const questionService = new QuestionService(questionRepo, knowledgeService, analyticsService);
-
-async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
-  const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
-
-  const faq = await questionService.getFaq(queryParams.limit as number);
-
-  return successResponse(faq, 200, { limit: queryParams.limit, total: faq.length });
+export interface FaqHandlerDeps {
+  questionService: QuestionService;
 }
 
-export const main = wrapHandler(handler);
+export function createHandler(deps: FaqHandlerDeps) {
+  return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const user = extractAndVerifyUser(event);
+    const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
+
+    const faq = await deps.questionService.getFaq(queryParams.limit as number);
+
+    return successResponse(faq, 200, { limit: queryParams.limit, total: faq.length });
+  });
+}
+
+let defaultDeps: FaqHandlerDeps | undefined;
+
+function getDefaultDeps(): FaqHandlerDeps {
+  if (!defaultDeps) {
+    const questionRepo = new DynamoQuestionRepository();
+    const cacheService = new CacheService(new DynamoCacheRepository());
+    const knowledgeService = new KnowledgeService(cacheService);
+    const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
+    defaultDeps = {
+      questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+    };
+  }
+  return defaultDeps;
+}
+
+export const main = wrapHandler((event: APIGatewayProxyEvent, context: Context) => createHandler(getDefaultDeps())(event, context));

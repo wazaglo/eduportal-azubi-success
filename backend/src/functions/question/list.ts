@@ -11,27 +11,42 @@ import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema, paginationSchema } from '../../utils/validator';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
 
-const questionRepo = new DynamoQuestionRepository();
-const cacheService = new CacheService(new DynamoCacheRepository());
-const knowledgeService = new KnowledgeService(cacheService);
-const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
-const questionService = new QuestionService(questionRepo, knowledgeService, analyticsService);
+export interface ListHandlerDeps {
+  questionService: QuestionService;
+}
 
-async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
-  const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
+export function createHandler(deps: ListHandlerDeps) {
+  return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const user = extractAndVerifyUser(event);
+    const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
 
-  const result = await questionService.listByUser(
-    user.userId,
-    queryParams.limit as number,
-    queryParams.nextToken,
-  );
+    const result = await deps.questionService.listByUser(
+      user.userId,
+      queryParams.limit as number,
+      queryParams.nextToken,
+    );
 
-  return successResponse(result.questions, 200, {
-    limit: queryParams.limit,
-    total: result.questions.length,
-    ...(result.nextToken ? { nextToken: result.nextToken } : {}),
+    return successResponse(result.questions, 200, {
+      limit: queryParams.limit,
+      total: result.questions.length,
+      ...(result.nextToken ? { nextToken: result.nextToken } : {}),
+    });
   });
 }
 
-export const main = wrapHandler(handler);
+let defaultDeps: ListHandlerDeps | undefined;
+
+function getDefaultDeps(): ListHandlerDeps {
+  if (!defaultDeps) {
+    const questionRepo = new DynamoQuestionRepository();
+    const cacheService = new CacheService(new DynamoCacheRepository());
+    const knowledgeService = new KnowledgeService(cacheService);
+    const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
+    defaultDeps = {
+      questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+    };
+  }
+  return defaultDeps;
+}
+
+export const main = wrapHandler((event: APIGatewayProxyEvent, context: Context) => createHandler(getDefaultDeps())(event, context));

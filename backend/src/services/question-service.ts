@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { QuestionRepository } from '../core/ports/question-repository';
-import { KnowledgeService } from './knowledge-service';
-import { AnalyticsService } from './analytics-service';
+import type { KnowledgeService } from './knowledge-service';
+import type { AnalyticsService } from './analytics-service';
 import { Question, FaqEntry } from '../core/entities/question';
 import { NotFoundError, AuthorizationError } from '../utils/errors';
 import { ROLES } from '../utils/constants';

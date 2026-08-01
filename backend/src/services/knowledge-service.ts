@@ -1,36 +1,24 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { CacheService } from './cache-service';
 import { logger } from '../utils/logger';
-import { SHS_SUBJECTS } from '../utils/knowledge-constants';
+import {
+  MIN_CONFIDENT_SCORE,
+  MIN_WEAK_SCORE,
+  WEAK_MATCH_NOTE,
+  SINGLE_TERM_MIN_COUNT,
+  calculateRelevance,
+  detectSubject,
+  extractRelevantExcerpt,
+  tokenize,
+} from './knowledge-retrieval';
 
-interface AnswerResult {
+export interface AnswerResult {
   answer: string;
   source: 'cache' | 'knowledge_base' | 'model';
   documentTitle?: string;
   note?: string;
   cached: boolean;
 }
-
-// Retrieval tuning constants.
-const TITLE_TERM_BONUS = 8;
-const PROXIMITY_BONUS = 10;
-const PROXIMITY_BONUS_MAX = 40;
-const MIN_CONFIDENT_SCORE = 15;
-const MIN_WEAK_SCORE = 3;
-const WEAK_MATCH_NOTE =
-  '[Note: the knowledge base has no detailed material on this exact topic. ' +
-  'The closest curriculum content is shown above; ask your teacher or check your textbook for a fuller answer.]';
-// A document is accepted on a single distinct matched term only when that
-// term occurs frequently enough that the match is clearly on-topic and not a
-// lone, incidental mention.
-const SINGLE_TERM_MIN_COUNT = 5;
-// Curriculum documents carry generic teacher-guidance blocks (e.g. NaCCA
-// "National Core Values") that repeat subject terms in a short span. They
-// would otherwise dominate term-frequency scoring and excerpt selection, so
-// text inside a block flagged by one of these markers is ignored for
-// retrieval purposes.
-const BOILERPLATE_MARKERS = ['national core values', 'core competencies', 'social emotional learning'];
-const BOILERPLATE_MAX_SPAN = 6000;
 
 export class KnowledgeService {
   private readonly s3: S3Client;
@@ -107,7 +95,7 @@ export class KnowledgeService {
       const levelPrefix = level ? `${level}/` : '';
       let prefix = `knowledge/${levelPrefix}`;
 
-      const detectedSubject = this.detectSubject(question);
+      const detectedSubject = detectSubject(question);
       if (detectedSubject) {
         prefix = `knowledge/${levelPrefix}${detectedSubject.replace(/\s+/g, '_')}/`;
         logger.info('Narrowed KB search to subject', { subject: detectedSubject, prefix });
@@ -128,7 +116,7 @@ export class KnowledgeService {
         return null;
       }
 
-      const questionTerms = this.tokenize(question);
+      const questionTerms = tokenize(question);
 
       if (questionTerms.length === 0) {
         logger.info('No usable question terms, skipping KB search', { question: question.substring(0, 50) });
@@ -151,11 +139,11 @@ export class KnowledgeService {
         const content = await this.readS3Document(doc.Key);
         if (!content) continue;
 
-        const { score, distinctMatched, maxTermCount } = this.calculateRelevance(questionTerms, title, content);
+        const { score, distinctMatched, maxTermCount } = calculateRelevance(questionTerms, title, content);
         const singleStrongMatch = distinctMatched === 1 && maxTermCount >= SINGLE_TERM_MIN_COUNT;
         if (distinctMatched < distinctTermsRequired && !singleStrongMatch) continue;
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-          const excerpt = this.extractRelevantExcerpt(content, questionTerms, 1000);
+          const excerpt = extractRelevantExcerpt(content, questionTerms, 1000);
           bestMatch = { answer: excerpt, title, score };
         }
       }
@@ -182,66 +170,7 @@ export class KnowledgeService {
   }
 
   public detectSubject(question: string): string | null {
-    const q = question.toLowerCase();
-
-    // Exact subject-name match (handles multi-word names like "Core Mathematics").
-    for (const subject of SHS_SUBJECTS) {
-      if (q.includes(subject.toLowerCase())) {
-        return subject;
-      }
-    }
-
-    // Common aliases for subjects students are likely to type.
-    const aliases: Record<string, string> = {
-      maths: 'Core Mathematics',
-      math: 'Core Mathematics',
-      mathematics: 'Core Mathematics',
-      'core maths': 'Core Mathematics',
-      'core math': 'Core Mathematics',
-      'integrated science': 'Integrated Science',
-      'general science': 'Integrated Science',
-      science: 'Integrated Science',
-      'social studies': 'Social Studies',
-      english: 'English Language',
-      'english language': 'English Language',
-    };
-
-    const tokens = q.split(/\s+/);
-    for (const token of tokens) {
-      const alias = aliases[token.replace(/[^a-z]/g, '')];
-      if (alias) {
-        return alias;
-      }
-    }
-
-    // Subject-topic keyword hints, only used when no subject name/alias matched.
-    // Matched as whole words to avoid false positives.
-    const subjectKeywords: Record<string, string[]> = {
-      'English Language': ['noun', 'verb', 'grammar', 'essay', 'comprehension', 'vocabulary', 'sentence', 'tense', 'spelling', 'adjective', 'pronoun', 'adverb', 'conjunction', 'preposition', 'reading', 'writing'],
-      'Core Mathematics': ['equation', 'algebra', 'geometry', 'trigonom', 'calculus', 'fraction', 'graph', 'probability', 'statistic', 'mean', 'median', 'mode', 'percentage', 'ratio', 'number', 'area', 'volume', 'quadratic', 'logarithm', 'indices'],
-      'Integrated Science': ['cell', 'organism', 'photosynthesis', 'respiration', 'enzyme', 'tissue', 'ecosystem', 'atom', 'molecule', 'compound', 'chemical', 'periodic', 'acid', 'base', 'reaction', 'element', 'force', 'energy', 'motion', 'velocity', 'acceleration', 'electricity', 'magnetism', 'wave', 'gravity', 'current', 'voltage', 'light', 'soil', 'microscope', 'disease', 'nutrition'],
-      'Social Studies': ['society', 'community', 'citizenship', 'culture', 'values', 'family', 'population', 'environment', 'development', 'governance', 'tolerance', 'human right', 'democracy', 'economy', 'resources'],
-    };
-
-    for (const [subject, keywords] of Object.entries(subjectKeywords)) {
-      if (keywords.some(k => new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(q))) {
-        return subject;
-      }
-    }
-
-    return null;
-  }
-
-  private readonly STOPWORDS = new Set([
-    'the', 'and', 'for', 'with', 'what', 'how', 'why', 'is', 'are', 'was', 'were', 'to', 'of',
-    'a', 'an', 'in', 'on', 'at', 'this', 'that', 'these', 'those', 'your', 'you', 'me', 'my',
-    'about', 'using', 'use', 'used', 'which', 'who', 'whom', 'where', 'when', 'do', 'does', 'did',
-    'explain', 'describe', 'define', 'give', 'tell', 'what', 'show', 'list', 'state', 'name', 'also',
-  ]);
-
-  private tokenize(question: string): string[] {
-    return question.toLowerCase().split(/[^a-z0-9]+/)
-      .filter(t => t.length > 2 && !this.STOPWORDS.has(t));
+    return detectSubject(question);
   }
 
   private async readS3Document(key: string): Promise<string | null> {
@@ -254,137 +183,5 @@ export class KnowledgeService {
       logger.error('Failed to read S3 document', { error: error.message, key });
       return null;
     }
-  }
-
-  private countWordMatches(term: string, text: string, boilerplateRanges: Array<[number, number]>): number {
-    const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-    let count = 0;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      if (!this.inBoilerplate(boilerplateRanges, m.index)) count++;
-    }
-    return count;
-  }
-
-  private calculateRelevance(questionTerms: string[], title: string, content: string): { score: number; distinctMatched: number; maxTermCount: number } {
-    const lowerTitle = title.toLowerCase();
-    const lowerContent = content.toLowerCase();
-    const boilerplateRanges = this.findBoilerplateRanges(lowerContent);
-
-    let contentScore = 0;
-    let distinctMatched = 0;
-    let maxTermCount = 0;
-    for (const term of questionTerms) {
-      const count = this.countWordMatches(term, lowerContent, boilerplateRanges);
-      if (count > 0) {
-        distinctMatched++;
-        if (count > maxTermCount) maxTermCount = count;
-      }
-      contentScore += Math.min(count, 15);
-    }
-
-    let titleScore = 0;
-    for (const term of questionTerms) {
-      if (this.countWordMatches(term, lowerTitle, []) > 0) {
-        titleScore += TITLE_TERM_BONUS;
-      }
-    }
-
-    const proximityBonus = this.calculateProximity(questionTerms, lowerContent);
-
-    // Density-aware: normalise raw term frequency by document size so long
-    // documents that merely repeat a word do not dominate focused sections.
-    const lengthNormalized = contentScore / Math.sqrt(Math.max(lowerContent.length, 1));
-
-    const score = Math.round(lengthNormalized * 100) + titleScore + proximityBonus;
-    return { score, distinctMatched, maxTermCount };
-  }
-
-  private calculateProximity(questionTerms: string[], content: string): number {
-    let bonus = 0;
-    for (let i = 0; i < questionTerms.length - 1; i++) {
-      const a = this.escapeRegExp(questionTerms[i]!);
-      const b = this.escapeRegExp(questionTerms[i + 1]!);
-      // Terms appearing within ~3 words of each other suggest a related passage.
-      const re = new RegExp(`\\b${a}\\s+(?:\\w+\\s+){0,3}${b}\\b`);
-      if (re.test(content)) bonus += PROXIMITY_BONUS;
-    }
-    return Math.min(bonus, PROXIMITY_BONUS_MAX);
-  }
-
-  private findBoilerplateRanges(content: string): Array<[number, number]> {
-    const ranges: Array<[number, number]> = [];
-    for (const marker of BOILERPLATE_MARKERS) {
-      let idx = content.indexOf(marker);
-      while (idx !== -1) {
-        const searchStart = idx + marker.length;
-        let end = Math.min(content.length, idx + BOILERPLATE_MAX_SPAN);
-        for (const other of BOILERPLATE_MARKERS) {
-          const otherIdx = content.indexOf(other, searchStart);
-          if (otherIdx !== -1 && otherIdx < end) end = otherIdx;
-        }
-        ranges.push([idx, end]);
-        idx = content.indexOf(marker, end);
-      }
-    }
-    return ranges.sort((a, b) => a[0] - b[0]);
-  }
-
-  private inBoilerplate(ranges: Array<[number, number]>, position: number): boolean {
-    for (const [start, end] of ranges) {
-      if (position >= start && position < end) return true;
-      if (position < start) return false;
-    }
-    return false;
-  }
-
-  private extractRelevantExcerpt(content: string, questionTerms: string[], maxChars: number): string {
-    const lower = content.toLowerCase();
-    const boilerplateRanges = this.findBoilerplateRanges(lower);
-
-    // Collect every term occurrence and find the densest window of matches,
-    // ignoring matches inside generic curriculum guidance blocks.
-    const positions: number[] = [];
-    for (const term of questionTerms) {
-      const re = new RegExp(`\\b${this.escapeRegExp(term)}\\b`, 'g');
-      let m;
-      while ((m = re.exec(lower)) !== null) {
-        if (!this.inBoilerplate(boilerplateRanges, m.index)) {
-          positions.push(m.index);
-          if (positions.length >= 200) break;
-        }
-      }
-    }
-
-    if (positions.length === 0) {
-      const head = content.substring(0, maxChars).trim();
-      return content.length > maxChars ? head + '...' : head;
-    }
-
-    positions.sort((a, b) => a - b);
-    let bestStart = positions[0]!;
-    let bestCount = 0;
-    let left = 0;
-    for (let right = 0; right < positions.length; right++) {
-      while (positions[right]! - positions[left]! > maxChars) left++;
-      const count = right - left + 1;
-      if (count > bestCount) {
-        bestCount = count;
-        bestStart = positions[left]!;
-      }
-    }
-
-    const start = Math.max(0, bestStart - 120);
-    const end = Math.min(content.length, start + maxChars);
-    let excerpt = content.substring(start, end).trim();
-
-    if (start > 0) excerpt = '...' + excerpt;
-    if (end < content.length) excerpt = excerpt + '...';
-
-    return excerpt;
-  }
-
-  private escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }

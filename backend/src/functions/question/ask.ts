@@ -17,34 +17,49 @@ const askSchema = z.object({
   subject: z.string().trim().min(1).max(100).optional(),
 });
 
-const questionRepo = new DynamoQuestionRepository();
-const cacheRepo = new DynamoCacheRepository();
-const cacheService = new CacheService(cacheRepo);
-const knowledgeService = new KnowledgeService(cacheService);
-const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
-const questionService = new QuestionService(questionRepo, knowledgeService, analyticsService);
-
-async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
-  const body = JSON.parse(event.body ?? '{}');
-  const input = validateSchema(askSchema, body);
-
-  const question = await questionService.ask({
-    userId: user.userId,
-    question: input.question,
-    subject: input.subject,
-  });
-
-  return successResponse({
-    questionId: question.questionId,
-    question: question.question,
-    answer: question.response,
-    subject: question.subject,
-    source: question.source,
-    status: question.status,
-    documentTitle: question.documentTitle,
-    createdAt: question.createdAt,
-  }, 201);
+export interface AskHandlerDeps {
+  questionService: QuestionService;
 }
 
-export const main = wrapHandler(handler);
+export function createHandler(deps: AskHandlerDeps) {
+  return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const user = extractAndVerifyUser(event);
+    const body = JSON.parse(event.body ?? '{}');
+    const input = validateSchema(askSchema, body);
+
+    const question = await deps.questionService.ask({
+      userId: user.userId,
+      question: input.question,
+      subject: input.subject,
+    });
+
+    return successResponse({
+      questionId: question.questionId,
+      question: question.question,
+      answer: question.response,
+      subject: question.subject,
+      source: question.source,
+      status: question.status,
+      documentTitle: question.documentTitle,
+      createdAt: question.createdAt,
+    }, 201);
+  });
+}
+
+let defaultDeps: AskHandlerDeps | undefined;
+
+function getDefaultDeps(): AskHandlerDeps {
+  if (!defaultDeps) {
+    const questionRepo = new DynamoQuestionRepository();
+    const cacheRepo = new DynamoCacheRepository();
+    const cacheService = new CacheService(cacheRepo);
+    const knowledgeService = new KnowledgeService(cacheService);
+    const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
+    defaultDeps = {
+      questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+    };
+  }
+  return defaultDeps;
+}
+
+export const main = wrapHandler((event: APIGatewayProxyEvent, context: Context) => createHandler(getDefaultDeps())(event, context));
