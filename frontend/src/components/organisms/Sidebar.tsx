@@ -33,7 +33,7 @@ export const Sidebar = component$<SidebarProps>(({ class: className }) => {
 
   const studentNavItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
-    { href: "/dashboard/chat", label: "Chat", icon: MessageSquareIcon },
+    { href: "/dashboard/ask", label: "Ask", icon: MessageSquareIcon },
     { href: "/dashboard/knowledge-base", label: "Knowledge Base", icon: DatabaseIcon },
     { href: "/dashboard/history", label: "History", icon: HistoryIcon },
     { href: "/dashboard/profile", label: "Profile", icon: UserIcon },
