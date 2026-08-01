@@ -104,6 +104,32 @@ jobs:
         run: |
           shopt -s globstar
 
+          wait_ready() {
+            local fn=$1
+            for _ in $(seq 1 20); do
+              local st
+              st=$(aws lambda get-function --function-name "$fn" --region "$REGION" \
+                --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null)
+              if [ "$st" = "Successful" ] || [ "$st" = "Active" ] || [ -z "$st" ]; then
+                return 0
+              fi
+              sleep 3
+            done
+          }
+
+          run_with_retry() {
+            local fn=$1
+            shift
+            for _ in $(seq 1 5); do
+              if "$@" > /dev/null 2>&1; then
+                return 0
+              fi
+              wait_ready "$fn"
+              sleep 5
+            done
+            return 1
+          }
+
           for zip in deployments/**/*.zip; do
             handler_path="${zip#deployments/}"
             handler_path="${handler_path%.zip}"
@@ -118,17 +144,17 @@ jobs:
             echo "Deploying ${function_name} (${handler_path}.main, ${timeout}s, ${memory}MB)..."
 
             if aws lambda get-function --function-name "$function_name" --region "$REGION" &>/dev/null; then
-              aws lambda update-function-configuration \
+              run_with_retry "$function_name" aws lambda update-function-code \
+                --function-name "$function_name" \
+                --zip-file "fileb://${zip}" \
+                --region "$REGION"
+
+              run_with_retry "$function_name" aws lambda update-function-configuration \
                 --function-name "$function_name" \
                 --handler "${handler_path}.main" \
                 --timeout "$timeout" \
                 --memory-size "$memory" \
                 --environment "file:///tmp/lambda-env.json" \
-                --region "$REGION" > /dev/null
-
-              aws lambda update-function-code \
-                --function-name "$function_name" \
-                --zip-file "fileb://${zip}" \
                 --region "$REGION"
             else
               aws lambda create-function \
@@ -143,6 +169,7 @@ jobs:
                 --region "$REGION" > /dev/null
             fi
 
+            wait_ready "$function_name"
             echo "  ✓ ${function_name}"
           done
 
