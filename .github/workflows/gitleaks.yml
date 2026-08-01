@@ -26,14 +26,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
 
-      - if: always()
+      - if: always() && hashFiles('results.sarif') != ''
         name: Upload SARIF (code scanning)
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
           category: gitleaks
 
-      - if: always()
+      - if: always() && hashFiles('results.sarif') != ''
         name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
