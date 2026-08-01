@@ -5,6 +5,8 @@ import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
+const roleResolver = defaultRoleResolver();
 
 const updateProfileSchema = z.object({
   fullName: z.string().min(1).max(100).optional(),
@@ -21,7 +23,7 @@ const updateProfileSchema = z.object({
 const userRepo = new DynamoUserRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
+  const user = await extractAndVerifyUser(event, roleResolver);
   const body = JSON.parse(event.body ?? '{}');
   const input = validateSchema(updateProfileSchema, body);
 

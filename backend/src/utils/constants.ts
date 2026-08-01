@@ -1,24 +1,15 @@
 export const TABLE_NAMES = {
   USERS: process.env.TABLE_USERS ?? 'ai-student-users',
-  CONVERSATIONS: process.env.TABLE_CONVERSATIONS ?? 'ai-student-conversations',
-  MESSAGES: process.env.TABLE_MESSAGES ?? 'ai-student-messages',
   CACHE: process.env.TABLE_CACHE ?? 'ai-student-cache',
   FEEDBACK: process.env.TABLE_FEEDBACK ?? 'ai-student-feedback',
   ANALYTICS: process.env.TABLE_ANALYTICS ?? 'ai-student-analytics',
-  AUDIT_LOG: process.env.TABLE_AUDIT_LOG ?? 'ai-student-audit-log',
   KNOWLEDGE: process.env.TABLE_KNOWLEDGE ?? 'ai-student-knowledge',
+  QUESTIONS: process.env.TABLE_QUESTIONS ?? 'ai-student-questions',
 } as const;
 
 export const COGNITO = {
   USER_POOL_ID: process.env.COGNITO_USER_POOL_ID ?? '',
   CLIENT_ID: process.env.COGNITO_CLIENT_ID ?? '',
-} as const;
-
-export const JWT = {
-  SECRET: process.env.JWT_SECRET ?? '',
-  ISSUER: process.env.JWT_ISSUER ?? 'ai-student-support',
-  ACCESS_TOKEN_EXPIRY: '1h',
-  REFRESH_TOKEN_EXPIRY: '7d',
 } as const;
 
 export const ROLES = {
@@ -62,9 +53,9 @@ export const QUERY_TYPES = {
 } as const;
 
 export const AI_MODELS = {
-  NOVA_LITE: 'amazon.nova-lite-v1:0',
-  CLAUDE_SONNET: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-  CLAUDE_HAIKU: 'anthropic.claude-3-haiku-20240307-v1:0',
+  GPT_4O: 'gpt-4o',
+  GPT_4O_MINI: 'gpt-4o-mini',
+  O1_MINI: 'o1-mini',
 } as const;
 
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;

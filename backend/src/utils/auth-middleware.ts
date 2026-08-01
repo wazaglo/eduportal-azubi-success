@@ -1,6 +1,5 @@
 import { APIGatewayProxyEvent } from 'aws-lambda';
-import jwt from 'jsonwebtoken';
-import { JWT, ROLES } from './constants';
+import { ROLES } from './constants';
 import { AuthenticationError, AuthorizationError } from './errors';
 
 export interface AuthUser {
@@ -11,35 +10,59 @@ export interface AuthUser {
   organizationId?: string;
 }
 
-export function extractAndVerifyUser(event: APIGatewayProxyEvent): AuthUser {
-  const authHeader = event.headers?.Authorization ?? event.headers?.authorization;
+export type RoleResolver = (userId: string) => Promise<string | null>;
 
-  if (!authHeader) {
-    throw new AuthenticationError('Missing Authorization header');
+interface CognitoClaims {
+  sub?: string;
+  email?: string;
+  'cognito:username'?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+function getClaims(event: APIGatewayProxyEvent): CognitoClaims {
+  return (event.requestContext?.authorizer?.claims as CognitoClaims | undefined) ?? {};
+}
+
+export function extractIdentity(event: APIGatewayProxyEvent): { userId: string; email: string } {
+  const claims = getClaims(event);
+  if (!claims.sub) {
+    throw new AuthenticationError('Missing or invalid authentication context');
+  }
+  return {
+    userId: claims.sub,
+    email:
+      typeof claims.email === 'string' && claims.email.length > 0
+        ? claims.email
+        : typeof claims['cognito:username'] === 'string'
+          ? claims['cognito:username']
+          : '',
+  };
+}
+
+export async function extractAndVerifyUser(
+  event: APIGatewayProxyEvent,
+  roleResolver?: RoleResolver,
+): Promise<AuthUser> {
+  const identity = extractIdentity(event);
+  const claims = getClaims(event);
+
+  let role: string | null = null;
+  if (roleResolver) {
+    role = (await roleResolver(identity.userId)) ?? null;
+  } else if (typeof claims.role === 'string' && claims.role.length > 0) {
+    role = claims.role;
   }
 
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.slice(7)
-    : authHeader;
-
-  try {
-    const decoded = jwt.verify(token, JWT.SECRET) as AuthUser & { iat?: number; exp?: number };
-
-    return {
-      userId: decoded.userId,
-      email: decoded.email,
-      role: decoded.role,
-      level: decoded.level,
-      organizationId: decoded.organizationId,
-    };
-  } catch {
-    throw new AuthenticationError('Invalid or expired token');
-  }
+  return {
+    ...identity,
+    role: role ?? ROLES.STUDENT,
+  };
 }
 
 export function requireRole(...allowedRoles: string[]) {
-  return (event: APIGatewayProxyEvent): AuthUser => {
-    const user = extractAndVerifyUser(event);
+  return async (event: APIGatewayProxyEvent, roleResolver?: RoleResolver): Promise<AuthUser> => {
+    const user = await extractAndVerifyUser(event, roleResolver);
 
     if (!allowedRoles.includes(user.role)) {
       throw new AuthorizationError(

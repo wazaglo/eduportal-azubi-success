@@ -35,7 +35,7 @@ export default component$(() => {
   const fileInput = useSignal<HTMLInputElement | undefined>(undefined);
   const uploadMeta = useStore({
     year: "SHS1",
-    subject: "ICT",
+    subject: "Core Mathematics",
     strand: "",
     substrand: "",
   });
@@ -154,7 +154,7 @@ export default component$(() => {
             <label class="block text-xs text-text-muted mb-1">Strand</label>
             <input
               type="text"
-              placeholder="e.g. ICTs in the Society"
+              placeholder="e.g. Algebraic Reasoning"
               value={uploadMeta.strand}
               onInput$={(e: any) => (uploadMeta.strand = e.target.value)}
               class="w-full px-3 py-2 rounded-xl border border-border bg-surface-secondary text-text-primary placeholder:text-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -164,7 +164,7 @@ export default component$(() => {
             <label class="block text-xs text-text-muted mb-1">Sub-Strand</label>
             <input
               type="text"
-              placeholder="e.g. Productivity Tools"
+              placeholder="e.g. Linear Equations"
               value={uploadMeta.substrand}
               onInput$={(e: any) => (uploadMeta.substrand = e.target.value)}
               class="w-full px-3 py-2 rounded-xl border border-border bg-surface-secondary text-text-primary placeholder:text-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"

@@ -33,7 +33,7 @@ export const Sidebar = component$<SidebarProps>(({ class: className }) => {
 
   const studentNavItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
-    { href: "/dashboard/chat", label: "Chat", icon: MessageSquareIcon },
+    { href: "/dashboard/ask", label: "Ask", icon: MessageSquareIcon },
     { href: "/dashboard/knowledge-base", label: "Knowledge Base", icon: DatabaseIcon },
     { href: "/dashboard/history", label: "History", icon: HistoryIcon },
     { href: "/dashboard/profile", label: "Profile", icon: UserIcon },
@@ -53,7 +53,7 @@ export const Sidebar = component$<SidebarProps>(({ class: className }) => {
   return (
     <aside
       class={[
-        "fixed left-0 top-0 z-40 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300",
+        "fixed left-0 top-0 z-40 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300 lg:relative lg:z-auto",
         collapsed.value ? "w-16" : "w-64",
         className,
       ].join(" ")}

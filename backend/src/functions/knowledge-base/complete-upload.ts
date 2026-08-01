@@ -2,12 +2,14 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { requireAdmin } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
 import { NotFoundError } from '../../utils/errors';
 import { KNOWLEDGE_BUCKET, KNOWLEDGE_LEVELS, SHS_SUBJECTS } from '../../utils/knowledge-constants';
 import { DynamoKnowledgeRepository } from '../../infrastructure/repositories/dynamo-knowledge-repository';
+const roleResolver = defaultRoleResolver();
 
 const completeSchema = z.object({
   s3Key: z.string().min(1),
@@ -24,7 +26,7 @@ const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'eu-west-1' });
 const repo = new DynamoKnowledgeRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = requireAdmin(event);
+  const user = await requireAdmin(event, roleResolver);
   const input = validateSchema(completeSchema, JSON.parse(event.body ?? '{}'));
 
   const head = await s3.send(new HeadObjectCommand({

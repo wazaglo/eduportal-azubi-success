@@ -10,30 +10,6 @@ export const SHS_SUBJECTS = [
   "Core Mathematics",
   "Integrated Science",
   "Social Studies",
-  "ICT",
-  "Computing",
-  "Biology",
-  "Chemistry",
-  "Physics",
-  "Elective Mathematics",
-  "Financial Accounting",
-  "Accounting",
-  "Business Management",
-  "Economics",
-  "Geography",
-  "History",
-  "Government",
-  "Literature in English",
-  "French",
-  "Ghanaian Language",
-  "Visual Arts",
-  "Music",
-  "Food and Nutrition",
-  "Clothing and Textiles",
-  "Management in Living",
-  "Agriculture Science",
-  "Technical Drawing",
-  "Physical Education",
 ] as const;
 
 export interface KnowledgeDocument {
@@ -104,6 +80,21 @@ export async function deleteDocument(documentId: string, s3Key: string): Promise
   await api.delete<{ data: { deleted: boolean } }>("/knowledge-base/documents", {
     body: JSON.stringify({ documentId, s3Key }),
   });
+}
+
+export interface DownloadUrlResponse {
+  downloadUrl: string;
+  fileName: string;
+  subject: string;
+  s3Key: string;
+  expiresIn: number;
+}
+
+export async function getDownloadUrl(subject: string): Promise<DownloadUrlResponse> {
+  const res = await api.get<{ data: DownloadUrlResponse }>("/knowledge-base/download-url", {
+    params: { subject },
+  });
+  return res.data;
 }
 
 export async function uploadToKnowledgeBase(file: File, meta: {
