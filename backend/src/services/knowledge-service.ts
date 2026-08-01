@@ -127,15 +127,6 @@ export class KnowledgeService {
 
     logger.info('Cache miss and KB miss, returning pending response', { question: question.substring(0, 50) });
     const stubAnswer = '[Model integration pending] This question could not be answered from the knowledge base. AI model support will be added next.';
-    await this.cacheService.storeCachedResponse({
-      query: question,
-      response: stubAnswer,
-      queryType: queryType as 'academic' | 'administrative' | 'general',
-      modelUsed: 'pending',
-      tokensUsed: 0,
-      similarityHash: '',
-      source: 'model',
-    });
     return {
       answer: stubAnswer,
       source: 'model',
