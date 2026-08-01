@@ -3,7 +3,6 @@ export interface AIResponse {
   modelUsed: string;
   tokensUsed: number;
   latencyMs: number;
-  guardrailTriggered: boolean;
   confidence: number;
   finishReason: string;
 }
@@ -15,11 +14,6 @@ export interface GenerateResponseInput {
   maxTokens?: number;
   temperature?: number;
   requireReasoning?: boolean;
-  guardrails?: {
-    contentPolicy?: boolean;
-    topicPolicy?: boolean;
-    wordPolicy?: boolean;
-  };
 }
 
 export interface GenerateSummaryInput {

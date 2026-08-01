@@ -42,7 +42,7 @@ amplify.yml  Amplify hosting config for the frontend
 - **Auth**: Cognito owns user accounts; each Lambda resolves the user's role (`student`, `admin`, `support`) from the `ai-student-users` table via the `sub` claim. Admin endpoints additionally require the `admin` role.
 - **Compute**: 23 Lambda handlers (`nodejs20.x`); `question/ask` is 120s / 1024MB, the rest 30s / 256MB.
 - **Data**: DynamoDB (on-demand tables), S3 knowledge base.
-- **AI**: OpenAI fallback when the knowledge base cannot answer — provider written but not yet wired (see [AI Integration](#ai-integration)).
+- **AI**: OpenAI fallback when the knowledge base cannot answer — already wired into the answer flow (see [AI Integration](#ai-integration)).
 - **Monitoring**: CloudWatch access/execution logging, alarms → SNS, `eduportal-monitoring` dashboard.
 
 Details: [docs/architecture.md](docs/architecture.md), [docs/aws-resources.md](docs/aws-resources.md).
@@ -56,7 +56,7 @@ Scripts (in `backend/`):
 ```bash
 npm run build      # bundle handlers with esbuild into dist/
 npm run package    # zip each handler into deployments/
-npm test           # vitest unit tests (43, no AWS SDK mocks)
+npm test           # vitest unit tests (45, no AWS SDK mocks)
 npm run typecheck  # tsc --noEmit
 ```
 

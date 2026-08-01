@@ -40,7 +40,6 @@ export class OpenAIProvider implements AIProvider {
         modelUsed: modelId,
         tokensUsed: (completion.usage?.prompt_tokens ?? 0) + (completion.usage?.completion_tokens ?? 0),
         latencyMs,
-        guardrailTriggered: false,
         confidence: choice?.finish_reason === 'stop' ? 1 : 0.8,
         finishReason: choice?.finish_reason ?? 'unknown',
       };

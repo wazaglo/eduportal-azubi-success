@@ -11,7 +11,6 @@ export type AnalyticsEventType =
   | 'question_asked'
   | 'error_occurred'
   | 'search_performed'
-  | 'guardrail_triggered'
   | 'model_switched';
 
 export interface AnalyticsEvent {

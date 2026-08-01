@@ -224,7 +224,7 @@ export const MyComponent = component$<Props>(({ label, onClick$ }) => {
 Use conventional commits:
 
 ```
-feat(chat): add message caching layer
+feat(question): add cache lookup for similar queries
 fix(auth): handle expired refresh tokens
 chore(deps): update aws-sdk to v3.600
 ```

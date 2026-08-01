@@ -101,7 +101,7 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 - **Data Encryption**: AES-256 at rest (DynamoDB SSE, S3 SSE)
 - **Transport**: TLS via API Gateway / Amplify
 - **Secrets**: No secrets in source; Cognito IDs and the knowledge-bucket name are Lambda environment variables backed by GitHub secrets
-- **IAM**: single least-privilege Lambda role with scoped inline policies (DynamoDB, CloudWatch Logs, Cognito, S3, SQS, Bedrock)
+- **IAM**: single least-privilege Lambda role with scoped inline policies (DynamoDB, CloudWatch Logs, Cognito, S3)
 
 ## CI/CD
 

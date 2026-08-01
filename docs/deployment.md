@@ -3,11 +3,10 @@
 ## 1. Prerequisites
 
 - Node.js 20 LTS, npm
-- AWS CLI configured (`aws configure`) with a profile that can manage Lambda, API Gateway, IAM, DynamoDB, and CloudWatch
 - Git access to the repo (`git@github.com:wazaglo/eduportal-azubi-success.git`)
 - `gh` CLI (for triggering/debugging GitHub Actions)
 
-## 2. CI/CD (Primary Path)
+## 2. CI/CD (Deployments happen here, not via the AWS CLI)
 
 The backend is deployed automatically by GitHub Actions. See `.github/workflows/deploy-backend.yml`:
 
@@ -17,7 +16,7 @@ The backend is deployed automatically by GitHub Actions. See `.github/workflows/
    - `npm run build` (esbuild) and `npm run package` (one zip per handler)
    - Assumes the `eduportal-github-actions-oidc` IAM role via GitHub OIDC (`aws-actions/configure-aws-credentials@v4`) — **no long-lived AWS keys**
    - Creates or updates all 23 `eduportal-*` Lambda functions from `backend/deployments/**/*.zip`
-   - Sets the Lambda environment (table names, Cognito IDs, `CORS_ORIGIN`, `KNOWLEDGE_BUCKET`) from GitHub secrets — no hardcoded values
+   - Sets the Lambda environment (table names, Cognito IDs, `CORS_ORIGIN`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER`, `OPENAI_MODEL`, `OPENAI_API_KEY`) from GitHub secrets — no hardcoded values
    - `question/ask` is deployed at 120s / 1024MB; all others 30s / 256MB
 
 ```bash
@@ -30,36 +29,7 @@ gh run watch <run-id> --repo wazaglo/eduportal-azubi-success --exit-status
 
 The OIDC trust policy is scoped to `repo:wazaglo@272252837/eduportal-azubi-success@1315937987` (and the classic slug) on `dev`/`main`. The long-lived `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` secrets have been removed; `ROLE_ARN` is retained for reference only.
 
-## 3. Manual Build & Deploy (Fallback)
-
-```bash
-cd backend
-npm install
-npm run build:all     # esbuild bundle -> dist/, zip -> deployments/
-```
-
-This produces `backend/deployments/{group}/{name}.zip` (e.g., `deployments/question/ask.zip`, 23 handlers in total).
-
-Deploy loop (equivalent of the CI deploy step):
-
-```bash
-export AWS_PROFILE=terrence AWS_REGION=eu-west-1
-shopt -s globstar
-for zip in backend/deployments/**/*.zip; do
-  handler_path="${zip#backend/deployments/}"; handler_path="${handler_path%.zip}"
-  fn="eduportal-${handler_path////-}"
-  timeout=30; memory=256
-  [ "$handler_path" = "question/ask" ] && timeout=120 && memory=1024
-  aws lambda update-function-code --function-name "$fn" --zip-file "fileb://${zip}" --region "$AWS_REGION" >/dev/null
-  aws lambda update-function-configuration --function-name "$fn" \
-    --handler "${handler_path}.main" --timeout "$timeout" --memory-size "$memory" \
-    --environment "file:///tmp/lambda-env.json" --region "$AWS_REGION" >/dev/null
-done
-```
-
-The handler for each zip is `{path}.main` (e.g., `question/ask.main`). Retry on `ResourceConflictException` when Lambda reports an update already in progress.
-
-## 4. Environment Variables
+## 3. Environment Variables
 
 | Variable | Value |
 |----------|-------|
@@ -74,13 +44,13 @@ The handler for each zip is `{path}.main` (e.g., `question/ask.main`). Retry on 
 
 Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `OPENAI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
 
-## 5. Frontend (Amplify)
+## 4. Frontend (Amplify)
 
 - AWS Amplify connects to the GitHub repo; `frontend/` builds to `frontend/dist`.
 - Set `PUBLIC_API_URL` to the API Gateway invoke URL per branch.
 - Build settings run `npm ci` then `npm run build` with `baseDirectory: frontend/dist`.
 
-## 6. Smoke Test
+## 5. Smoke Test
 
 ```bash
 API=https://kzhykroge1.execute-api.eu-west-1.amazonaws.com/dev
@@ -100,7 +70,7 @@ curl -s "$API/FAQ" -H "Authorization: Bearer $TOKEN"
 curl -s -X DELETE "$API/question/<id>" -H "Authorization: Bearer $TOKEN"
 ```
 
-## 7. Monitoring (CloudWatch)
+## 6. Monitoring (CloudWatch)
 
 - API Gateway access + execution logs on `dev` (`API-Gateway-Execution-Logs_kzhykroge1/dev`, 14-day retention)
 - Lambda log retention 14 days on all `/aws/lambda/eduportal-*` groups
