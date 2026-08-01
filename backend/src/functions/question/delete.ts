@@ -8,15 +8,17 @@ import { KnowledgeService } from '../../services/knowledge-service';
 import { AnalyticsService } from '../../services/analytics-service';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
-import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { extractAndVerifyUser, RoleResolver } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 
 export interface DeleteHandlerDeps {
   questionService: QuestionService;
+  roleResolver?: RoleResolver;
 }
 
 export function createHandler(deps: DeleteHandlerDeps) {
   return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    const user = extractAndVerifyUser(event);
+    const user = await extractAndVerifyUser(event, deps.roleResolver);
     const questionId = event.pathParameters?.id;
 
     if (!questionId) {
@@ -43,6 +45,7 @@ function getDefaultDeps(): DeleteHandlerDeps {
     const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
     defaultDeps = {
       questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+      roleResolver: defaultRoleResolver(),
     };
   }
   return defaultDeps;

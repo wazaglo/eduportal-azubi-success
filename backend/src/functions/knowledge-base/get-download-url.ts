@@ -2,15 +2,17 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { NotFoundError } from '../../utils/errors';
 import { KNOWLEDGE_BUCKET, SHS_SUBJECTS } from '../../utils/knowledge-constants';
+const roleResolver = defaultRoleResolver();
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'eu-west-1' });
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  extractAndVerifyUser(event);
+  await extractAndVerifyUser(event, roleResolver);
 
   const subject = event.queryStringParameters?.subject;
   if (!subject || !SHS_SUBJECTS.includes(subject as (typeof SHS_SUBJECTS)[number])) {

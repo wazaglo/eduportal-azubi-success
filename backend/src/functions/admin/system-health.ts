@@ -5,15 +5,17 @@ import { DynamoCacheRepository } from '../../infrastructure/repositories/dynamo-
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { requireAdmin } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 import { STATUS_CODES } from '../../utils/constants';
 import { logger } from '../../utils/logger';
+const roleResolver = defaultRoleResolver();
 
 const userRepo = new DynamoUserRepository();
 const questionRepo = new DynamoQuestionRepository();
 const cacheRepo = new DynamoCacheRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  requireAdmin(event);
+  await requireAdmin(event, roleResolver);
   const startTime = Date.now();
 
   try {

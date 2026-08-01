@@ -1,10 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import type { QuestionService } from '../../services/question-service';
 import { Question } from '../../core/entities/question';
-
-const { verifyMock } = vi.hoisted(() => ({ verifyMock: vi.fn() }));
-vi.mock('jsonwebtoken', () => ({ default: { verify: verifyMock } }));
 
 import { createHandler, AskHandlerDeps } from './ask';
 
@@ -29,6 +26,9 @@ function makeEvent(overrides: Partial<APIGatewayProxyEvent> = {}): APIGatewayPro
     httpMethod: 'POST',
     path: '/ask',
     headers: { Authorization: 'Bearer test-token' },
+    requestContext: {
+      authorizer: { claims: { sub: 'user-1', email: 'student@test.com' } },
+    },
     body: JSON.stringify({ question: 'What is a quadratic equation?' }),
     ...overrides,
   } as unknown as APIGatewayProxyEvent;
@@ -40,15 +40,10 @@ function makeDeps(overrides?: Partial<AskHandlerDeps>): AskHandlerDeps {
   const questionService = {
     ask: vi.fn(async () => makeQuestion()),
   } as unknown as QuestionService;
-  return { questionService, ...overrides };
+  return { questionService, roleResolver: vi.fn(async () => 'student'), ...overrides };
 }
 
 describe('POST /ask handler', () => {
-  beforeEach(() => {
-    verifyMock.mockReset();
-    verifyMock.mockReturnValue({ userId: 'user-1', email: 'student@test.com', role: 'student' });
-  });
-
   it('returns 201 with the created question on a valid request', async () => {
     const deps = makeDeps();
     const handler = createHandler(deps);
@@ -82,23 +77,16 @@ describe('POST /ask handler', () => {
     expect(body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('returns 401 when no Authorization header is present', async () => {
+  it('returns 401 when the authorizer provides no claims', async () => {
     const handler = createHandler(makeDeps());
-    const result = await handler(makeEvent({ headers: {} }), context);
+    const result = await handler(
+      makeEvent({ requestContext: { authorizer: {} } as unknown as APIGatewayProxyEvent['requestContext'] }),
+      context,
+    );
 
     expect(result.statusCode).toBe(401);
     const body = JSON.parse(result.body);
     expect(body.success).toBe(false);
     expect(body.error.code).toBe('AUTHENTICATION_ERROR');
-  });
-
-  it('returns 401 when the token is invalid', async () => {
-    verifyMock.mockImplementation(() => {
-      throw new Error('jwt malformed');
-    });
-    const handler = createHandler(makeDeps());
-    const result = await handler(makeEvent(), context);
-
-    expect(result.statusCode).toBe(401);
   });
 });

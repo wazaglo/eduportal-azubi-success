@@ -9,15 +9,17 @@ import { AnalyticsService } from '../../services/analytics-service';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema, paginationSchema } from '../../utils/validator';
-import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { extractAndVerifyUser, RoleResolver } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 
 export interface ListHandlerDeps {
   questionService: QuestionService;
+  roleResolver?: RoleResolver;
 }
 
 export function createHandler(deps: ListHandlerDeps) {
   return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    const user = extractAndVerifyUser(event);
+    const user = await extractAndVerifyUser(event, deps.roleResolver);
     const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
 
     const result = await deps.questionService.listByUser(
@@ -44,6 +46,7 @@ function getDefaultDeps(): ListHandlerDeps {
     const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
     defaultDeps = {
       questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+      roleResolver: defaultRoleResolver(),
     };
   }
   return defaultDeps;

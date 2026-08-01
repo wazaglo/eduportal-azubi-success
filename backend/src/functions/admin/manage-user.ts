@@ -5,6 +5,8 @@ import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
 import { requireAdmin } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
+const roleResolver = defaultRoleResolver();
 
 const updateUserSchema = z.object({
   role: z.enum(['student', 'admin', 'support']).optional(),
@@ -16,7 +18,7 @@ const updateUserSchema = z.object({
 const userRepo = new DynamoUserRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  requireAdmin(event);
+  await requireAdmin(event, roleResolver);
   const userId = event.pathParameters?.id;
 
   if (!userId) {

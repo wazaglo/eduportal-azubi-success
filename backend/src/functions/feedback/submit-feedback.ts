@@ -7,7 +7,9 @@ import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 import { STATUS_CODES } from '../../utils/constants';
+const roleResolver = defaultRoleResolver();
 
 const submitFeedbackSchema = z.object({
   messageId: z.string().uuid(),
@@ -22,7 +24,7 @@ const analyticsRepo = new DynamoAnalyticsRepository();
 const feedbackService = new FeedbackService(feedbackRepo, analyticsRepo);
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
+  const user = await extractAndVerifyUser(event, roleResolver);
   const body = JSON.parse(event.body ?? '{}');
   const input = validateSchema(submitFeedbackSchema, body);
 

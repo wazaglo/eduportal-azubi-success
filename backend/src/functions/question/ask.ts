@@ -10,7 +10,8 @@ import { AnalyticsService } from '../../services/analytics-service';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
-import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { extractAndVerifyUser, RoleResolver } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 
 const askSchema = z.object({
   question: z.string().min(1, 'Question is required').max(2000),
@@ -19,11 +20,12 @@ const askSchema = z.object({
 
 export interface AskHandlerDeps {
   questionService: QuestionService;
+  roleResolver?: RoleResolver;
 }
 
 export function createHandler(deps: AskHandlerDeps) {
   return wrapHandler(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    const user = extractAndVerifyUser(event);
+    const user = await extractAndVerifyUser(event, deps.roleResolver);
     const body = JSON.parse(event.body ?? '{}');
     const input = validateSchema(askSchema, body);
 
@@ -57,6 +59,7 @@ function getDefaultDeps(): AskHandlerDeps {
     const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
     defaultDeps = {
       questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
+      roleResolver: defaultRoleResolver(),
     };
   }
   return defaultDeps;
