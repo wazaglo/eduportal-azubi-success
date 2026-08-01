@@ -85,18 +85,18 @@ jobs:
           cat > /tmp/lambda-env.json <<JSON
           {"Variables":{
             "TABLE_ANALYTICS": "ai-student-analytics",
-            "TABLE_AUDIT_LOG": "ai-student-audit-log",
             "TABLE_CACHE": "ai-student-cache",
             "TABLE_FEEDBACK": "ai-student-feedback",
             "TABLE_KNOWLEDGE": "ai-student-knowledge",
             "TABLE_QUESTIONS": "ai-student-questions",
             "TABLE_USERS": "ai-student-users",
-            "JWT_SECRET": "${{ secrets.JWT_SECRET || 'test-secret-not-for-production' }}",
-            "JWT_ISSUER": "eduportal-auth",
-            "CORS_ORIGIN": "${{ secrets.CORS_ORIGIN || '*' }}",
-            "COGNITO_CLIENT_ID": "${{ secrets.COGNITO_CLIENT_ID || '5u2cc85m997rvttujel00a0ngd' }}",
-            "COGNITO_USER_POOL_ID": "${{ secrets.COGNITO_USER_POOL_ID || 'eu-west-1_58jU3t3eE' }}",
-            "KNOWLEDGE_BUCKET": "${{ secrets.KNOWLEDGE_BUCKET || 'eduportal-azubi-success-knowledge-base' }}"
+            "CORS_ORIGIN": "${{ secrets.CORS_ORIGIN }}",
+            "COGNITO_CLIENT_ID": "${{ secrets.COGNITO_CLIENT_ID }}",
+            "COGNITO_USER_POOL_ID": "${{ secrets.COGNITO_USER_POOL_ID }}",
+            "KNOWLEDGE_BUCKET": "${{ secrets.KNOWLEDGE_BUCKET }}",
+            "AI_PROVIDER": "openai",
+            "OPENAI_MODEL": "gpt-4o-mini",
+            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}"
           }}
           JSON
 

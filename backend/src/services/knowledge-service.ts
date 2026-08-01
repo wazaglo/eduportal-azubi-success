@@ -71,9 +71,9 @@ export class KnowledgeService {
       logger.warn('KNOWLEDGE_BUCKET not configured, skipping S3 search');
     }
 
-    // Step 3: Fallback to AI model (stub — another team will implement)
-    logger.info('Cache miss and KB miss, returning model stub', { question: question.substring(0, 50) });
-    const stubAnswer = '[Model integration pending] This question could not be answered from the knowledge base. AI model support will be added by another team.';
+    // Step 3: Fallback to the OpenAI provider (integration in progress)
+    logger.info('Cache miss and KB miss, returning OpenAI stub', { question: question.substring(0, 50) });
+    const stubAnswer = '[AI integration pending] This question could not be answered from the knowledge base. OpenAI model support will be added next.';
     await this.cacheService.storeCachedResponse({
       query: question,
       response: stubAnswer,
