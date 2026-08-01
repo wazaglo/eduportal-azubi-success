@@ -184,22 +184,14 @@ export class KnowledgeService {
       maths: 'Core Mathematics',
       math: 'Core Mathematics',
       mathematics: 'Core Mathematics',
-      'ict': 'ICT',
+      'core maths': 'Core Mathematics',
+      'core math': 'Core Mathematics',
       'integrated science': 'Integrated Science',
       'general science': 'Integrated Science',
+      science: 'Integrated Science',
       'social studies': 'Social Studies',
-      'english': 'English Language',
-      'chemistry': 'Chemistry',
-      'biology': 'Biology',
-      'physics': 'Physics',
-      'computing': 'Computing',
-      'economics': 'Economics',
-      'geography': 'Geography',
-      'history': 'History',
-      'government': 'Government',
-      'french': 'French',
-      'spanish': 'Spanish',
-      'arabic': 'Arabic',
+      english: 'English Language',
+      'english language': 'English Language',
     };
 
     const tokens = q.split(/\s+/);
@@ -213,19 +205,10 @@ export class KnowledgeService {
     // Subject-topic keyword hints, only used when no subject name/alias matched.
     // Matched as whole words to avoid false positives.
     const subjectKeywords: Record<string, string[]> = {
-      'Biology': ['cell', 'organism', 'photosynthesis', 'respiration', 'anatomy', 'dna', 'gene', 'genetics', 'ecosystem', 'enzyme', 'tissue'],
-      'Chemistry': ['atom', 'molecule', 'compound', 'chemical', 'periodic', 'acid', 'base', 'reaction', 'element', 'mole', 'mercury', 'hydrogen', 'oxygen', 'carbon'],
-      'Physics': ['force', 'energy', 'motion', 'velocity', 'acceleration', 'electricity', 'magnetism', 'wave', 'gravit', 'quantum', 'friction', 'surface tension', 'adhesion', 'cohesion', 'capillary', 'buoyancy', 'circuit'],
-      'Core Mathematics': ['equation', 'algebra', 'geometry', 'trigonom', 'calculus', 'fraction', 'graph', 'probability', 'statistic'],
-      'Computing': ['algorithm', 'program', 'software', 'hardware', 'database', 'binary', 'network', 'logic gate', 'html', 'python', 'computer'],
-      'History': ['world war', 'colonial', 'empire', 'dynasty', 'revolution', 'independence', 'pre-colonial', 'civilisation', 'civilization', 'king'],
-      'Geography': ['climate', 'population', 'migration', 'settlement', 'landform', 'weather', 'vegetation', 'earthquake', 'river'],
-      'Government': ['constitution', 'parliament', 'executive', 'judiciary', 'democracy', 'governance', 'citizen'],
-      'Economics': ['supply', 'demand', 'market', 'inflation', 'gdp', 'trade', 'price'],
-      'Literature in English': ['poem', 'poetry', 'novel', 'drama', 'prose', 'character', 'setting', 'plot'],
-      'Performing Arts': ['dance', 'theatre', 'theater', 'performance', 'stage'],
-      'Religious and Moral Education': ['morality', 'ethics', 'worship', 'spiritual', 'virtue', 'moral'],
-      'Social Studies': ['society', 'community', 'citizenship', 'culture', 'values'],
+      'English Language': ['noun', 'verb', 'grammar', 'essay', 'comprehension', 'vocabulary', 'sentence', 'tense', 'spelling', 'adjective', 'pronoun', 'adverb', 'conjunction', 'preposition', 'reading', 'writing'],
+      'Core Mathematics': ['equation', 'algebra', 'geometry', 'trigonom', 'calculus', 'fraction', 'graph', 'probability', 'statistic', 'mean', 'median', 'mode', 'percentage', 'ratio', 'number', 'area', 'volume', 'quadratic', 'logarithm', 'indices'],
+      'Integrated Science': ['cell', 'organism', 'photosynthesis', 'respiration', 'enzyme', 'tissue', 'ecosystem', 'atom', 'molecule', 'compound', 'chemical', 'periodic', 'acid', 'base', 'reaction', 'element', 'force', 'energy', 'motion', 'velocity', 'acceleration', 'electricity', 'magnetism', 'wave', 'gravity', 'current', 'voltage', 'light', 'soil', 'microscope', 'disease', 'nutrition'],
+      'Social Studies': ['society', 'community', 'citizenship', 'culture', 'values', 'family', 'population', 'environment', 'development', 'governance', 'tolerance', 'human right', 'democracy', 'economy', 'resources'],
     };
 
     for (const [subject, keywords] of Object.entries(subjectKeywords)) {
