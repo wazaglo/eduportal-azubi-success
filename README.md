@@ -1,141 +1,94 @@
 # eduportal-azubi-success
 
-AI-powered student support platform. Students ask academic questions and receive answers sourced from the NaCCA curriculum knowledge base.
+AI-powered student support platform. Students ask academic questions and get answers grounded in the NaCCA Senior High School curriculum knowledge base.
 
-Built as a serverless application on AWS. The frontend is a Qwik City SPA.
+Serverless on AWS; the frontend is a Qwik City SPA.
 
 ## Branch Strategy
 
-All development work should be done on the **`dev`** branch. The `main` branch is protected and requires pull request reviews.
+Work on **`dev`**; `main` is protected and requires pull request reviews.
 
-```bash
-git checkout dev
-git pull origin dev
-```
+## Quick Start
 
-## Quick Start (Docker)
+Docker:
 
 ```bash
 docker compose -f docker/docker-compose.yml up frontend
 ```
 
-Open **http://localhost:8081**
+Open **http://localhost:8081**.
 
-## Dev (no Docker)
+No Docker:
 
 ```bash
-cd frontend
-npm install
-npm run dev -- --port 8081
+cd frontend && npm install && npm run dev -- --port 8081
 ```
 
 ## Project Structure
 
 ```
-├── frontend/          # Qwik City SPA (UI, stores, API wiring)
-├── backend/           # AWS Lambda handlers (serverless)
-├── docker/            # Docker Compose for local dev
-├── docs/              # Architecture and deployment docs
-└── .github/           # CI/CD workflows
+frontend/    Qwik City SPA (UI, stores, API wiring)
+backend/     AWS Lambda handlers (serverless)
+infra/       DynamoDB table definition (dynamodb.yml)
+docker/      Docker Compose for local dev
+docs/        Architecture, API, and deployment docs
+.github/     CI/CD workflows
+amplify.yml  Amplify hosting config for the frontend
 ```
 
-## Serverless Architecture
+## Architecture
 
-All backend components are serverless on AWS:
+- **API**: API Gateway (REST). A **Cognito user pool authorizer** protects every route except `/auth/*` and `OPTIONS`. Clients send the Cognito **ID token** as `Authorization: Bearer <idToken>`.
+- **Auth**: Cognito owns user accounts; each Lambda resolves the user's role (`student`, `admin`, `support`) from the `ai-student-users` table via the `sub` claim. Admin endpoints additionally require the `admin` role.
+- **Compute**: 23 Lambda handlers (`nodejs20.x`); `question/ask` is 120s / 1024MB, the rest 30s / 256MB.
+- **Data**: DynamoDB (on-demand tables), S3 knowledge base.
+- **AI**: OpenAI fallback when the knowledge base cannot answer — provider written but not yet wired (see [AI Integration](#ai-integration)).
+- **Monitoring**: CloudWatch access/execution logging, alarms → SNS, `eduportal-monitoring` dashboard.
 
-- **Compute**: AWS Lambda
-- **API**: Amazon API Gateway
-- **Database**: Amazon DynamoDB
-- **Storage**: Amazon S3 (knowledge base)
-- **Auth**: Amazon Cognito
-- **AI**: Amazon Bedrock
+Details: [docs/architecture.md](docs/architecture.md), [docs/aws-resources.md](docs/aws-resources.md).
 
 ## Lambda Backend
 
-24 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`. Auth is JWT via `Authorization: Bearer <token>`; admin endpoints also require the `admin` role.
+23 TypeScript handlers in `backend/src/functions/`, deployed to Lambda as `eduportal-<name>`.
+
+Scripts (in `backend/`):
+
+```bash
+npm run build      # bundle handlers with esbuild into dist/
+npm run package    # zip each handler into deployments/
+npm test           # vitest unit tests (43, no AWS SDK mocks)
+npm run typecheck  # tsc --noEmit
+```
 
 ## Knowledge Base
 
-Authentic NaCCA Senior High School curriculum PDFs (all 33 subjects) are parsed into searchable text sections and stored in S3, referenced by the chat assistant:
+NaCCA Senior High School curriculum PDFs are parsed into searchable text sections in S3 (`knowledge/{Subject}/{Strand}/{Subject}-SHS{n}-{...}.txt`; 108 documents + 4 source PDFs). Subjects: Core Mathematics, English Language, Integrated Science, Social Studies. Metadata lives in the `ai-student-knowledge` table.
 
-- **Bucket**: `eduportal-azubi-success-knowledge-base` (SSE-S3 AES-256, public access blocked)
-- **Layout**: `knowledge/{Subject}/{Strand}/{file}` (year is stored per-document)
-- **Source PDFs**: `knowledge/sources/{Subject}/{Subject}-Curriculum.pdf` (downloadable via the API)
-- **Metadata**: DynamoDB table `ai-student-knowledge` (documentId HASH; GSIs `SubjectIndex`, `YearIndex`)
-- **Seed data**: 777 documents across all 33 subjects, covering SHS 1-3 (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing, Biology, Chemistry, Physics, History, Geography, Economics, French, Spanish, Arabic, and more)
-- Chat answers reference these documents; see [docs/architecture.md](docs/architecture.md) and [docs/api.md](docs/api.md)
+## API
 
-## Auth Flow (Cognito)
+Core flow: `POST /ask` searches the knowledge base and falls back to AI; `GET /question`, `GET /FAQ`, and `DELETE /question/{id}` manage questions. Auth endpoints live under `/auth/*`, profile under `/user/profile`, feedback under `/feedback`, knowledge-base and admin under `/knowledge-base/*` and `/admin/*`.
 
-Amazon Cognito sits in front of the API as the **API Gateway authorizer**:
+Full endpoint reference (methods, request/response, lambdas): [docs/api.md](docs/api.md).
 
-```
-Frontend ──► Cognito User Pool (login, tokens) ──► API Gateway (Cognito authorizer) ──► Lambda
-```
+## AI Integration
 
-- **User Pool**: sign-up/sign-in, JWT/refresh tokens (`COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`)
-- **Authorizer**: `ai-student-support-cognito-authorizer` attached to all routes except `/auth/*`
-- **Lambda verification**: handlers self-verify the JWT against `JWT_SECRET` and check roles (`admin`) for admin endpoints
-- Full setup steps: `docs/aws-resources.md` §2
+The OpenAI provider is already written (`backend/src/infrastructure/ai/openai-provider.ts`, default via `AI_PROVIDER=openai`) but **not wired into the answer flow yet** — unanswered questions currently return `"[AI integration pending] ..."`.
 
-## API Reference
+To connect it:
 
-### Auth (public)
+1. Create an OpenAI API key at platform.openai.com. Never commit it.
+2. Store it as a GitHub secret:
+   ```bash
+   gh secret set OPENAI_API_KEY -R wazaglo/eduportal-azubi-success
+   ```
+   The deploy workflow already injects `AI_PROVIDER=openai`, `OPENAI_MODEL=gpt-4o-mini`, and `OPENAI_API_KEY` into every Lambda.
+3. In `backend/src/services/knowledge-service.ts`, replace the `"[AI integration pending] ..."` branch with `ProviderFactory.getProvider().generateResponse(...)` and return `{ answer: result.content, source: 'model' }`.
+4. `OPENAI_MODEL` defaults to `gpt-4o-mini`; `gpt-4o` is used automatically for questions that request reasoning.
 
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| POST | `/auth/register` | `eduportal-auth-register` | Create account (email, password, fullName) |
-| POST | `/auth/login` | `eduportal-auth-login` | Sign in, returns JWT + refresh token |
-| POST | `/auth/refresh-token` | `eduportal-auth-refresh-token` | Get new JWT from refresh token |
-| POST | `/auth/verify-email` | `eduportal-auth-verify-email` | Verify email with code |
-| POST | `/auth/reset-password` | `eduportal-auth-reset-password` | Request reset (email) or confirm (email, code, newPassword) |
+No frontend changes are needed.
 
-### User (JWT)
+## CI/CD
 
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| GET | `/user/profile` | `eduportal-user-get-profile` | Get current user profile |
-| PUT | `/user/profile` | `eduportal-user-update-profile` | Update profile |
+GitHub Actions deploys the backend on push to `dev`/`main` (path `backend/**`) or `workflow_dispatch`: lint-and-test → deploy (assumes the OIDC role, updates the 23 `eduportal-*` lambdas). The frontend is hosted on Amplify.
 
-### Chat (JWT)
-
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| POST | `/chat/send` | `eduportal-chat-send-message` | Send message (content; optional conversationId, queryType, requireAsync) |
-| GET | `/chat/conversations` | `eduportal-chat-get-conversations` | List conversations (limit, nextToken) |
-| GET | `/chat/conversations/{id}` | `eduportal-chat-get-conversation` | Get conversation + messages |
-| DELETE | `/chat/conversations/{id}` | `eduportal-chat-delete-conversation` | Delete conversation |
-
-### Feedback (JWT)
-
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| POST | `/feedback` | `eduportal-feedback-submit` | Submit feedback (messageId, rating 1-5; optional comment, category) |
-| GET | `/feedback` | `eduportal-feedback-get` | Get your feedback (limit, nextToken) |
-
-### Knowledge Base (JWT)
-
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| GET | `/knowledge-base/documents` | `eduportal-knowledge-base-list-documents` | List documents (year, subject, strand, substrand, limit) |
-| GET | `/knowledge-base/download-url` | `eduportal-knowledge-base-get-download-url` | Get a presigned URL to download a subject's curriculum PDF |
-| POST | `/knowledge-base/presign-upload` | `eduportal-knowledge-base-presign-upload` | Admin: get presigned S3 PUT URL (fileName, contentType, year, subject, strand, substrand) |
-| POST | `/knowledge-base/complete-upload` | `eduportal-knowledge-base-complete-upload` | Admin: register document metadata after S3 upload |
-| DELETE | `/knowledge-base/documents` | `eduportal-knowledge-base-delete-document` | Admin: delete document (documentId, s3Key) |
-
-Upload is restricted to the `admin` role; listing is available to any authenticated user.
-
-### Admin (JWT + admin role)
-
-| Method | Path | Lambda | Description |
-|--------|------|--------|-------------|
-| GET | `/admin/users` | `eduportal-admin-list-users` | List users (limit, nextToken, role) |
-| PUT | `/admin/users/{id}` | `eduportal-admin-manage-user` | Update user (role, isActive, etc.) |
-| GET | `/admin/analytics` | `eduportal-admin-get-analytics` | Usage analytics (startDate, endDate) |
-| GET | `/admin/health` | `eduportal-admin-system-health` | System health |
-
-### AI (async, SQS-triggered — not HTTP)
-
-| Trigger | Handler | Description |
-|---------|---------|-------------|
-| SQS FIFO queue | `eduportal-ai-process-async` | Processes async chat messages (conversationId, messageId, userId) |
+See [docs/deployment.md](docs/deployment.md) and [docs/aws-resources.md](docs/aws-resources.md).

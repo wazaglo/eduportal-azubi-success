@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: DynamoDB tables for the AI-Powered Student Support System
+Description: DynamoDB table for the AI-Powered Student Support System
 
 Resources:
   QuestionsTable:

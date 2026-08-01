@@ -11,12 +11,9 @@
 ## Clone and Install
 
 ```bash
-git clone https://github.com/your-org/ai-student-support.git
-cd ai-student-support
-npm install
+git clone git@github.com:wazaglo/eduportal-azubi-success.git
+cd eduportal-azubi-success
 ```
-
-This installs dependencies for both `frontend/` and `backend/` packages.
 
 ## Backend Development
 
@@ -34,12 +31,12 @@ Key variables for local development:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AWS_REGION` | `us-east-1` | AWS region for SDK clients |
+| `AWS_REGION` | `eu-west-1` | AWS region for SDK clients |
 | `AWS_ENDPOINT` | `http://localhost:8000` | DynamoDB Local endpoint |
-| `TABLE_USERS` through `TABLE_AUDIT_LOG` | `ai-student-*` | Table names (can be anything for local testing) |
+| `TABLE_USERS` through `TABLE_KNOWLEDGE` | `ai-student-*` | Table names (can be anything for local testing) |
 | `COGNITO_USER_POOL_ID` | - | Required if using Cognito |
 | `COGNITO_CLIENT_ID` | - | Required if using Cognito |
-| `JWT_SECRET` | - | Secret for local JWT signing |
+| `COGNITO_CLIENT_ID` | - | Cognito app client id |
 | `LOG_LEVEL` | `DEBUG` | Log detail level |
 
 ### Build
@@ -61,10 +58,10 @@ backend/deployments/
 ├── auth/reset-password.zip
 ├── auth/refresh-token.zip
 ├── auth/resend-verification-code.zip
-├── chat/send-message.zip
-├── chat/get-conversations.zip
-├── chat/get-conversation.zip
-├── chat/delete-conversation.zip
+├── question/ask.zip
+├── question/list.zip
+├── question/faq.zip
+├── question/delete.zip
 ├── user/get-profile.zip
 ├── user/update-profile.zip
 ├── feedback/submit-feedback.zip
@@ -73,12 +70,24 @@ backend/deployments/
 ├── knowledge-base/complete-upload.zip
 ├── knowledge-base/list-documents.zip
 ├── knowledge-base/delete-document.zip
+├── knowledge-base/get-download-url.zip
 ├── admin/list-users.zip
 ├── admin/manage-user.zip
 ├── admin/get-analytics.zip
-├── admin/system-health.zip
-└── ai/process-async.zip
+└── admin/system-health.zip
 ```
+
+### Tests
+
+Unit tests use **vitest** and never import or mock the AWS SDK. Handlers are tested through `createHandler(deps)` factories with in-memory fake repositories:
+
+```bash
+cd backend
+npm test             # run once
+npm run test:watch   # watch mode
+```
+
+Test files live next to their source (`knowledge-retrieval.test.ts`, `question-service.test.ts`, `question/*.test.ts`).
 
 ### Type Check
 
@@ -136,7 +145,7 @@ The project uses strict TypeScript. Key settings:
 | Functions and methods | `camelCase` | `sendMessage()` |
 | Variables and parameters | `camelCase` | `conversationId` |
 | Constants and enums | `UPPER_SNAKE_CASE` | `TABLE_NAMES` |
-| Environment variables | `UPPER_SNAKE_CASE` | `JWT_SECRET` |
+| Environment variables | `UPPER_SNAKE_CASE` | `COGNITO_CLIENT_ID` |
 
 ### Backend Patterns
 
@@ -166,7 +175,7 @@ async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
 export const main = wrapHandler(handler);
 ```
 
-**Dependency Injection:** Services receive dependencies through the constructor. This enables unit testing with mock repositories.
+**Dependency Injection:** Handlers are built with `createHandler(deps)` factories returning `wrapHandler(...)`; the exported `main` wires real dependencies. Tests call `createHandler` with fakes — see `backend/src/functions/question/ask.test.ts`.
 
 **Error Handling:** Use custom error classes:
 
