@@ -20,6 +20,17 @@ const MIN_WEAK_SCORE = 3;
 const WEAK_MATCH_NOTE =
   '[Note: the knowledge base has no detailed material on this exact topic. ' +
   'The closest curriculum content is shown above; ask your teacher or check your textbook for a fuller answer.]';
+// A document is accepted on a single distinct matched term only when that
+// term occurs frequently enough that the match is clearly on-topic and not a
+// lone, incidental mention.
+const SINGLE_TERM_MIN_COUNT = 5;
+// Curriculum documents carry generic teacher-guidance blocks (e.g. NaCCA
+// "National Core Values") that repeat subject terms in a short span. They
+// would otherwise dominate term-frequency scoring and excerpt selection, so
+// text inside a block flagged by one of these markers is ignored for
+// retrieval purposes.
+const BOILERPLATE_MARKERS = ['national core values', 'core competencies', 'social emotional learning'];
+const BOILERPLATE_MAX_SPAN = 6000;
 
 export class KnowledgeService {
   private readonly s3: S3Client;
@@ -140,8 +151,9 @@ export class KnowledgeService {
         const content = await this.readS3Document(doc.Key);
         if (!content) continue;
 
-        const { score, distinctMatched } = this.calculateRelevance(questionTerms, title, content);
-        if (distinctMatched < distinctTermsRequired) continue;
+        const { score, distinctMatched, maxTermCount } = this.calculateRelevance(questionTerms, title, content);
+        const singleStrongMatch = distinctMatched === 1 && maxTermCount >= SINGLE_TERM_MIN_COUNT;
+        if (distinctMatched < distinctTermsRequired && !singleStrongMatch) continue;
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
           const excerpt = this.extractRelevantExcerpt(content, questionTerms, 1000);
           bestMatch = { answer: excerpt, title, score };
@@ -244,27 +256,36 @@ export class KnowledgeService {
     }
   }
 
-  private countWordMatches(term: string, text: string): number {
+  private countWordMatches(term: string, text: string, boilerplateRanges: Array<[number, number]>): number {
     const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-    const matches = text.match(re);
-    return matches ? matches.length : 0;
+    let count = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (!this.inBoilerplate(boilerplateRanges, m.index)) count++;
+    }
+    return count;
   }
 
-  private calculateRelevance(questionTerms: string[], title: string, content: string): { score: number; distinctMatched: number } {
+  private calculateRelevance(questionTerms: string[], title: string, content: string): { score: number; distinctMatched: number; maxTermCount: number } {
     const lowerTitle = title.toLowerCase();
     const lowerContent = content.toLowerCase();
+    const boilerplateRanges = this.findBoilerplateRanges(lowerContent);
 
     let contentScore = 0;
     let distinctMatched = 0;
+    let maxTermCount = 0;
     for (const term of questionTerms) {
-      const count = this.countWordMatches(term, lowerContent);
-      if (count > 0) distinctMatched++;
+      const count = this.countWordMatches(term, lowerContent, boilerplateRanges);
+      if (count > 0) {
+        distinctMatched++;
+        if (count > maxTermCount) maxTermCount = count;
+      }
       contentScore += Math.min(count, 15);
     }
 
     let titleScore = 0;
     for (const term of questionTerms) {
-      if (this.countWordMatches(term, lowerTitle) > 0) {
+      if (this.countWordMatches(term, lowerTitle, []) > 0) {
         titleScore += TITLE_TERM_BONUS;
       }
     }
@@ -276,7 +297,7 @@ export class KnowledgeService {
     const lengthNormalized = contentScore / Math.sqrt(Math.max(lowerContent.length, 1));
 
     const score = Math.round(lengthNormalized * 100) + titleScore + proximityBonus;
-    return { score, distinctMatched };
+    return { score, distinctMatched, maxTermCount };
   }
 
   private calculateProximity(questionTerms: string[], content: string): number {
@@ -291,17 +312,47 @@ export class KnowledgeService {
     return Math.min(bonus, PROXIMITY_BONUS_MAX);
   }
 
+  private findBoilerplateRanges(content: string): Array<[number, number]> {
+    const ranges: Array<[number, number]> = [];
+    for (const marker of BOILERPLATE_MARKERS) {
+      let idx = content.indexOf(marker);
+      while (idx !== -1) {
+        const searchStart = idx + marker.length;
+        let end = Math.min(content.length, idx + BOILERPLATE_MAX_SPAN);
+        for (const other of BOILERPLATE_MARKERS) {
+          const otherIdx = content.indexOf(other, searchStart);
+          if (otherIdx !== -1 && otherIdx < end) end = otherIdx;
+        }
+        ranges.push([idx, end]);
+        idx = content.indexOf(marker, end);
+      }
+    }
+    return ranges.sort((a, b) => a[0] - b[0]);
+  }
+
+  private inBoilerplate(ranges: Array<[number, number]>, position: number): boolean {
+    for (const [start, end] of ranges) {
+      if (position >= start && position < end) return true;
+      if (position < start) return false;
+    }
+    return false;
+  }
+
   private extractRelevantExcerpt(content: string, questionTerms: string[], maxChars: number): string {
     const lower = content.toLowerCase();
+    const boilerplateRanges = this.findBoilerplateRanges(lower);
 
-    // Collect every term occurrence and find the densest window of matches.
+    // Collect every term occurrence and find the densest window of matches,
+    // ignoring matches inside generic curriculum guidance blocks.
     const positions: number[] = [];
     for (const term of questionTerms) {
       const re = new RegExp(`\\b${this.escapeRegExp(term)}\\b`, 'g');
       let m;
       while ((m = re.exec(lower)) !== null) {
-        positions.push(m.index);
-        if (positions.length >= 200) break;
+        if (!this.inBoilerplate(boilerplateRanges, m.index)) {
+          positions.push(m.index);
+          if (positions.length >= 200) break;
+        }
       }
     }
 
