@@ -224,8 +224,8 @@ Authenticate with email and password.
       "role": "student"
     },
     "tokens": {
-      "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-      "refreshToken": "...",
+      "accessToken": "<access-token>",
+      "refreshToken": "<refresh-token>",
       "expiresIn": 3600
     }
   }
@@ -236,7 +236,7 @@ Authenticate with email and password.
 
 Obtain a new access token from a refresh token.
 
-**Request:** `{ "refreshToken": "..." }`
+**Request:** `{ "refreshToken": "<refresh-token>" }`
 
 ### POST /auth/verify-email
 
