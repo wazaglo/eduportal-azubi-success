@@ -62,7 +62,7 @@ Authentic NaCCA Senior High School curriculum PDFs (all 33 subjects) are parsed 
 - **Layout**: `knowledge/{Subject}/{Strand}/{file}` (year is stored per-document)
 - **Source PDFs**: `knowledge/sources/{Subject}/{Subject}-Curriculum.pdf` (downloadable via the API)
 - **Metadata**: DynamoDB table `ai-student-knowledge` (documentId HASH; GSIs `SubjectIndex`, `YearIndex`)
-- **Seed data**: 362 documents across all 33 subjects (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing, Biology, Chemistry, Physics, History, Geography, Economics, French, Spanish, Arabic, and more)
+- **Seed data**: 777 documents across all 33 subjects, covering SHS 1-3 (English Language, Core Mathematics, Integrated Science, Social Studies, ICT, Computing, Biology, Chemistry, Physics, History, Geography, Economics, French, Spanish, Arabic, and more)
 - Chat answers reference these documents; see [docs/architecture.md](docs/architecture.md) and [docs/api.md](docs/api.md)
 
 ## Auth Flow (Cognito)

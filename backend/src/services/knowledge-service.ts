@@ -7,8 +7,19 @@ interface AnswerResult {
   answer: string;
   source: 'cache' | 'knowledge_base' | 'model';
   documentTitle?: string;
+  note?: string;
   cached: boolean;
 }
+
+// Retrieval tuning constants.
+const TITLE_TERM_BONUS = 8;
+const PROXIMITY_BONUS = 10;
+const PROXIMITY_BONUS_MAX = 40;
+const MIN_CONFIDENT_SCORE = 15;
+const MIN_WEAK_SCORE = 3;
+const WEAK_MATCH_NOTE =
+  '[Note: the knowledge base has no detailed material on this exact topic. ' +
+  'The closest curriculum content is shown above; ask your teacher or check your textbook for a fuller answer.]';
 
 export class KnowledgeService {
   private readonly s3: S3Client;
@@ -37,21 +48,23 @@ export class KnowledgeService {
     if (this.bucket) {
       const kbResult = await this.searchS3KnowledgeBase(question, level);
       if (kbResult) {
+        const answer = kbResult.note ? `${kbResult.answer}\n\n${kbResult.note}` : kbResult.answer;
         await this.cacheService.storeCachedResponse({
           query: question,
-          response: kbResult.answer,
+          response: answer,
           queryType: queryType as 'academic' | 'administrative' | 'general',
           modelUsed: 'knowledge-base',
           tokensUsed: 0,
           similarityHash: '',
           source: 'knowledge_base',
-          metadata: { documentTitle: kbResult.documentTitle },
+          metadata: { documentTitle: kbResult.documentTitle, note: kbResult.note },
         });
         logger.info('Knowledge base hit for question', { question: question.substring(0, 50), level });
         return {
-          answer: kbResult.answer,
+          answer,
           source: 'knowledge_base',
           documentTitle: kbResult.documentTitle,
+          note: kbResult.note,
           cached: false,
         };
       }
@@ -78,7 +91,7 @@ export class KnowledgeService {
     };
   }
 
-  private async searchS3KnowledgeBase(question: string, level: string): Promise<{ answer: string; documentTitle: string } | null> {
+  private async searchS3KnowledgeBase(question: string, level: string): Promise<{ answer: string; documentTitle: string; note?: string } | null> {
     try {
       const levelPrefix = level ? `${level}/` : '';
       let prefix = `knowledge/${levelPrefix}`;
@@ -106,6 +119,15 @@ export class KnowledgeService {
 
       const questionTerms = this.tokenize(question);
 
+      if (questionTerms.length === 0) {
+        logger.info('No usable question terms, skipping KB search', { question: question.substring(0, 50) });
+        return null;
+      }
+
+      // Multi-term questions must match on at least two distinct terms so a
+      // document that merely repeats a single word does not win by frequency.
+      const distinctTermsRequired = questionTerms.length >= 2 ? 2 : 1;
+
       let bestMatch: { answer: string; title: string; score: number } | null = null;
 
       for (const doc of documents) {
@@ -118,16 +140,26 @@ export class KnowledgeService {
         const content = await this.readS3Document(doc.Key);
         if (!content) continue;
 
-        const score = this.calculateRelevance(questionTerms, title, content);
+        const { score, distinctMatched } = this.calculateRelevance(questionTerms, title, content);
+        if (distinctMatched < distinctTermsRequired) continue;
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
           const excerpt = this.extractRelevantExcerpt(content, questionTerms, 1000);
           bestMatch = { answer: excerpt, title, score };
         }
       }
 
-      if (bestMatch && bestMatch.score >= 6) {
-        logger.info('Best KB document match', { title: bestMatch.title, score: bestMatch.score });
+      if (bestMatch && bestMatch.score >= MIN_CONFIDENT_SCORE) {
+        logger.info('Best KB document match (confident)', { title: bestMatch.title, score: bestMatch.score });
         return { answer: bestMatch.answer, documentTitle: bestMatch.title };
+      }
+
+      if (bestMatch && bestMatch.score >= MIN_WEAK_SCORE) {
+        logger.info('Best KB document match (weak)', { title: bestMatch.title, score: bestMatch.score });
+        return {
+          answer: bestMatch.answer,
+          documentTitle: bestMatch.title,
+          note: WEAK_MATCH_NOTE,
+        };
       }
 
       return null;
@@ -182,8 +214,8 @@ export class KnowledgeService {
     // Matched as whole words to avoid false positives.
     const subjectKeywords: Record<string, string[]> = {
       'Biology': ['cell', 'organism', 'photosynthesis', 'respiration', 'anatomy', 'dna', 'gene', 'genetics', 'ecosystem', 'enzyme', 'tissue'],
-      'Chemistry': ['atom', 'molecule', 'compound', 'chemical', 'periodic', 'acid', 'base', 'reaction', 'element', 'mole'],
-      'Physics': ['force', 'energy', 'motion', 'velocity', 'acceleration', 'electricity', 'magnetism', 'wave', 'gravit', 'quantum', 'friction'],
+      'Chemistry': ['atom', 'molecule', 'compound', 'chemical', 'periodic', 'acid', 'base', 'reaction', 'element', 'mole', 'mercury', 'hydrogen', 'oxygen', 'carbon'],
+      'Physics': ['force', 'energy', 'motion', 'velocity', 'acceleration', 'electricity', 'magnetism', 'wave', 'gravit', 'quantum', 'friction', 'surface tension', 'adhesion', 'cohesion', 'capillary', 'buoyancy', 'circuit'],
       'Core Mathematics': ['equation', 'algebra', 'geometry', 'trigonom', 'calculus', 'fraction', 'graph', 'probability', 'statistic'],
       'Computing': ['algorithm', 'program', 'software', 'hardware', 'database', 'binary', 'network', 'logic gate', 'html', 'python', 'computer'],
       'History': ['world war', 'colonial', 'empire', 'dynasty', 'revolution', 'independence', 'pre-colonial', 'civilisation', 'civilization', 'king'],
@@ -235,41 +267,90 @@ export class KnowledgeService {
     return matches ? matches.length : 0;
   }
 
-  private calculateRelevance(questionTerms: string[], title: string, content: string): number {
+  private calculateRelevance(questionTerms: string[], title: string, content: string): { score: number; distinctMatched: number } {
     const lowerTitle = title.toLowerCase();
     const lowerContent = content.toLowerCase();
+
     let contentScore = 0;
+    let distinctMatched = 0;
+    for (const term of questionTerms) {
+      const count = this.countWordMatches(term, lowerContent);
+      if (count > 0) distinctMatched++;
+      contentScore += Math.min(count, 15);
+    }
+
     let titleScore = 0;
     for (const term of questionTerms) {
-      contentScore += Math.min(this.countWordMatches(term, lowerContent), 10);
       if (this.countWordMatches(term, lowerTitle) > 0) {
-        titleScore += 5;
+        titleScore += TITLE_TERM_BONUS;
       }
     }
-    return contentScore + titleScore;
+
+    const proximityBonus = this.calculateProximity(questionTerms, lowerContent);
+
+    // Density-aware: normalise raw term frequency by document size so long
+    // documents that merely repeat a word do not dominate focused sections.
+    const lengthNormalized = contentScore / Math.sqrt(Math.max(lowerContent.length, 1));
+
+    const score = Math.round(lengthNormalized * 100) + titleScore + proximityBonus;
+    return { score, distinctMatched };
+  }
+
+  private calculateProximity(questionTerms: string[], content: string): number {
+    let bonus = 0;
+    for (let i = 0; i < questionTerms.length - 1; i++) {
+      const a = this.escapeRegExp(questionTerms[i]!);
+      const b = this.escapeRegExp(questionTerms[i + 1]!);
+      // Terms appearing within ~3 words of each other suggest a related passage.
+      const re = new RegExp(`\\b${a}\\s+(?:\\w+\\s+){0,3}${b}\\b`);
+      if (re.test(content)) bonus += PROXIMITY_BONUS;
+    }
+    return Math.min(bonus, PROXIMITY_BONUS_MAX);
   }
 
   private extractRelevantExcerpt(content: string, questionTerms: string[], maxChars: number): string {
     const lower = content.toLowerCase();
-    let bestPos = -1;
-    let bestFreq = 0;
+
+    // Collect every term occurrence and find the densest window of matches.
+    const positions: number[] = [];
     for (const term of questionTerms) {
-      const freq = this.countWordMatches(term, lower);
-      if (freq > bestFreq) {
-        bestFreq = freq;
-        bestPos = lower.indexOf(term);
+      const re = new RegExp(`\\b${this.escapeRegExp(term)}\\b`, 'g');
+      let m;
+      while ((m = re.exec(lower)) !== null) {
+        positions.push(m.index);
+        if (positions.length >= 200) break;
       }
     }
 
-    if (bestPos < 0) return content.substring(0, maxChars);
+    if (positions.length === 0) {
+      const head = content.substring(0, maxChars).trim();
+      return content.length > maxChars ? head + '...' : head;
+    }
 
-    const start = Math.max(0, bestPos - 200);
-    const end = Math.min(content.length, bestPos + maxChars);
-    let excerpt = content.substring(start, end);
+    positions.sort((a, b) => a - b);
+    let bestStart = positions[0]!;
+    let bestCount = 0;
+    let left = 0;
+    for (let right = 0; right < positions.length; right++) {
+      while (positions[right]! - positions[left]! > maxChars) left++;
+      const count = right - left + 1;
+      if (count > bestCount) {
+        bestCount = count;
+        bestStart = positions[left]!;
+      }
+    }
+
+    const start = Math.max(0, bestStart - 120);
+    const end = Math.min(content.length, start + maxChars);
+    let excerpt = content.substring(start, end).trim();
 
     if (start > 0) excerpt = '...' + excerpt;
     if (end < content.length) excerpt = excerpt + '...';
 
     return excerpt;
+  }
+
+  private escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }
