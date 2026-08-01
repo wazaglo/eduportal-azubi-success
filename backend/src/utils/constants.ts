@@ -7,6 +7,7 @@ export const TABLE_NAMES = {
   ANALYTICS: process.env.TABLE_ANALYTICS ?? 'ai-student-analytics',
   AUDIT_LOG: process.env.TABLE_AUDIT_LOG ?? 'ai-student-audit-log',
   KNOWLEDGE: process.env.TABLE_KNOWLEDGE ?? 'ai-student-knowledge',
+  QUESTIONS: process.env.TABLE_QUESTIONS ?? 'ai-student-questions',
 } as const;
 
 export const COGNITO = {

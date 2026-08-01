@@ -169,7 +169,7 @@ export class KnowledgeService {
     }
   }
 
-  private detectSubject(question: string): string | null {
+  public detectSubject(question: string): string | null {
     const q = question.toLowerCase();
 
     // Exact subject-name match (handles multi-word names like "Core Mathematics").
