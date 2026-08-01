@@ -5,5 +5,6 @@ export interface QuestionRepository {
   findById(questionId: string): Promise<Question | null>;
   findByUser(userId: string, limit: number, nextToken?: string): Promise<{ questions: Question[]; nextToken?: string }>;
   findAll(limit: number): Promise<Question[]>;
+  count(): Promise<number>;
   delete(questionId: string): Promise<void>;
 }

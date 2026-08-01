@@ -56,8 +56,7 @@ jobs:
             handler_path="${handler_path%.zip}"
             function_name="eduportal-${handler_path////-}"
             timeout=$TIMEOUT_DEFAULT
-            [ "$handler_path" = "chat/send-message" ] && timeout=$TIMEOUT_LONG
-            [ "$handler_path" = "ai/process-async" ] && timeout=$TIMEOUT_LONG
+            [ "$handler_path" = "question/ask" ] && timeout=$TIMEOUT_LONG
 
             echo "Deploying ${function_name} (${handler_path}.main, ${timeout}s)..."
 

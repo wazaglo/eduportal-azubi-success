@@ -83,6 +83,14 @@ export class DynamoQuestionRepository implements QuestionRepository {
     return (result.Items as Question[]) ?? [];
   }
 
+  async count(): Promise<number> {
+    const result = await this.db.send(new ScanCommand({
+      TableName: this.tableName,
+      Select: 'COUNT',
+    }));
+    return result.Count ?? 0;
+  }
+
   async delete(questionId: string): Promise<void> {
     await this.db.send(new DeleteCommand({
       TableName: this.tableName,

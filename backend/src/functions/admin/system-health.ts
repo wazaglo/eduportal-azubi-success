@@ -1,7 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { DynamoUserRepository } from '../../infrastructure/repositories/dynamo-user-repository';
-import { DynamoConversationRepository } from '../../infrastructure/repositories/dynamo-conversation-repository';
-import { DynamoMessageRepository } from '../../infrastructure/repositories/dynamo-message-repository';
+import { DynamoQuestionRepository } from '../../infrastructure/repositories/dynamo-question-repository';
 import { DynamoCacheRepository } from '../../infrastructure/repositories/dynamo-cache-repository';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
@@ -10,8 +9,7 @@ import { STATUS_CODES } from '../../utils/constants';
 import { logger } from '../../utils/logger';
 
 const userRepo = new DynamoUserRepository();
-const conversationRepo = new DynamoConversationRepository();
-const messageRepo = new DynamoMessageRepository();
+const questionRepo = new DynamoQuestionRepository();
 const cacheRepo = new DynamoCacheRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
@@ -21,13 +19,11 @@ async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
   try {
     const [
       activeUsers,
-      conversationsByStatus,
-      messagesToday,
+      questionsCount,
       cacheCount,
     ] = await Promise.allSettled([
       userRepo.countActive(),
-      conversationRepo.countByStatus(),
-      messageRepo.countToday(),
+      questionRepo.count(),
       cacheRepo.count(),
     ]);
 
@@ -37,8 +33,7 @@ async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
     const failedChecks: string[] = [];
 
     if (activeUsers.status === 'rejected') failedChecks.push('users');
-    if (conversationsByStatus.status === 'rejected') failedChecks.push('conversations');
-    if (messagesToday.status === 'rejected') failedChecks.push('messages');
+    if (questionsCount.status === 'rejected') failedChecks.push('questions');
     if (cacheCount.status === 'rejected') failedChecks.push('cache');
 
     const healthy = failedChecks.length === 0;
@@ -50,8 +45,7 @@ async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
       timestamp: new Date().toISOString(),
       checks: {
         users: { healthy: activeUsers.status === 'fulfilled', count: extract(activeUsers) },
-        conversations: { healthy: conversationsByStatus.status === 'fulfilled', byStatus: extract(conversationsByStatus) },
-        messages: { healthy: messagesToday.status === 'fulfilled', today: extract(messagesToday) },
+        questions: { healthy: questionsCount.status === 'fulfilled', count: extract(questionsCount) },
         cache: { healthy: cacheCount.status === 'fulfilled', entries: extract(cacheCount) },
       },
       ...(failedChecks.length > 0 ? { failedChecks } : {}),

@@ -4,7 +4,7 @@
   "description": "AI-Powered Student Support System - AWS Lambda Backend",
   "private": true,
   "scripts": {
-    "build": "node esbuild.config.mjs",
+    "build": "rm -rf dist && node esbuild.config.mjs",
     "package": "node scripts/package.mjs",
     "build:all": "npm run build && npm run package",
     "test:handler": "node scripts/test-handler.mjs",
