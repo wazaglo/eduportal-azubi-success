@@ -1,5 +1,6 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { CacheService } from './cache-service';
+import { ProviderFactory } from '../infrastructure/ai/provider-factory';
 import { logger } from '../utils/logger';
 import {
   MIN_CONFIDENT_SCORE,
@@ -18,6 +19,7 @@ export interface AnswerResult {
   documentTitle?: string;
   note?: string;
   cached: boolean;
+  pending?: boolean;
 }
 
 export class KnowledgeService {
@@ -44,36 +46,87 @@ export class KnowledgeService {
     }
 
     // Step 2: Search S3 Knowledge Base
+    let kb: { answer: string; documentTitle: string; note?: string } | null = null;
     if (this.bucket) {
-      const kbResult = await this.searchS3KnowledgeBase(question, level);
-      if (kbResult) {
-        const answer = kbResult.note ? `${kbResult.answer}\n\n${kbResult.note}` : kbResult.answer;
-        await this.cacheService.storeCachedResponse({
-          query: question,
-          response: answer,
-          queryType: queryType as 'academic' | 'administrative' | 'general',
-          modelUsed: 'knowledge-base',
-          tokensUsed: 0,
-          similarityHash: '',
-          source: 'knowledge_base',
-          metadata: { documentTitle: kbResult.documentTitle, note: kbResult.note },
-        });
-        logger.info('Knowledge base hit for question', { question: question.substring(0, 50), level });
-        return {
-          answer,
-          source: 'knowledge_base',
-          documentTitle: kbResult.documentTitle,
-          note: kbResult.note,
-          cached: false,
-        };
-      }
+      kb = await this.searchS3KnowledgeBase(question, level);
     } else {
       logger.warn('KNOWLEDGE_BUCKET not configured, skipping S3 search');
     }
 
-    // Step 3: Fallback to the OpenAI provider (integration in progress)
-    logger.info('Cache miss and KB miss, returning OpenAI stub', { question: question.substring(0, 50) });
-    const stubAnswer = '[AI integration pending] This question could not be answered from the knowledge base. OpenAI model support will be added next.';
+    // A confident match is on-topic: answer directly from the curriculum.
+    if (kb && !kb.note) {
+      const answer = kb.answer;
+      await this.cacheService.storeCachedResponse({
+        query: question,
+        response: answer,
+        queryType: queryType as 'academic' | 'administrative' | 'general',
+        modelUsed: 'knowledge-base',
+        tokensUsed: 0,
+        similarityHash: '',
+        source: 'knowledge_base',
+        metadata: { documentTitle: kb.documentTitle },
+      });
+      logger.info('Knowledge base hit for question', { question: question.substring(0, 50), level });
+      return {
+        answer,
+        source: 'knowledge_base',
+        documentTitle: kb.documentTitle,
+        cached: false,
+      };
+    }
+
+    // Step 3: Weak/no KB match -> refine with the AI provider when a key exists.
+    // The closest curriculum excerpt is passed as context so the answer stays
+    // grounded in the curriculum instead of returning a raw content dump.
+    if (kb && kb.note && process.env.OPENAI_API_KEY) {
+      const aiAnswer = await this.generateWithAI(question, kb.answer);
+      if (aiAnswer) {
+        logger.info('AI-refined weak KB match for question', { question: question.substring(0, 50) });
+        await this.cacheService.storeCachedResponse({
+          query: question,
+          response: aiAnswer.answer,
+          queryType: queryType as 'academic' | 'administrative' | 'general',
+          modelUsed: aiAnswer.modelUsed,
+          tokensUsed: aiAnswer.tokensUsed,
+          similarityHash: '',
+          source: 'model',
+          metadata: { documentTitle: kb.documentTitle },
+        });
+        return {
+          answer: aiAnswer.answer,
+          source: 'model',
+          documentTitle: kb.documentTitle,
+          cached: false,
+        };
+      }
+    }
+
+    // Step 4: No AI available. Fall back to the weak KB excerpt, or the
+    // integration-pending placeholder when nothing was found.
+    if (kb && kb.note) {
+      const answer = `${kb.answer}\n\n${kb.note}`;
+      await this.cacheService.storeCachedResponse({
+        query: question,
+        response: answer,
+        queryType: queryType as 'academic' | 'administrative' | 'general',
+        modelUsed: 'knowledge-base',
+        tokensUsed: 0,
+        similarityHash: '',
+        source: 'knowledge_base',
+        metadata: { documentTitle: kb.documentTitle, note: kb.note },
+      });
+      logger.info('Weak knowledge base match for question', { question: question.substring(0, 50), level });
+      return {
+        answer,
+        source: 'knowledge_base',
+        documentTitle: kb.documentTitle,
+        note: kb.note,
+        cached: false,
+      };
+    }
+
+    logger.info('Cache miss and KB miss, returning pending response', { question: question.substring(0, 50) });
+    const stubAnswer = '[Model integration pending] This question could not be answered from the knowledge base. AI model support will be added next.';
     await this.cacheService.storeCachedResponse({
       query: question,
       response: stubAnswer,
@@ -86,8 +139,37 @@ export class KnowledgeService {
     return {
       answer: stubAnswer,
       source: 'model',
+      pending: true,
       cached: false,
     };
+  }
+
+  private async generateWithAI(question: string, curriculumContext?: string): Promise<{ answer: string; modelUsed: string; tokensUsed: number } | null> {
+    try {
+      const provider = ProviderFactory.getProvider();
+      const prompt = curriculumContext
+        ? `Answer the student's question using the curriculum material below as the basis. Keep the answer clear, concise, and directly answer the question. If the material does not cover the question, say so plainly.\n\nStudent question: ${question}\n\nRelevant curriculum material:\n${curriculumContext}`
+        : question;
+
+      const result = await provider.generateResponse({
+        prompt,
+        systemPrompt:
+          'You are a friendly, knowledgeable tutor for a Senior High School student in Ghana. ' +
+          'Answer directly and step by step where helpful. Use plain language and avoid repeating the question back.',
+        maxTokens: 600,
+        temperature: 0.4,
+      });
+
+      if (!result.content || !result.content.trim()) {
+        logger.warn('AI provider returned an empty answer');
+        return null;
+      }
+
+      return { answer: result.content.trim(), modelUsed: result.modelUsed, tokensUsed: result.tokensUsed };
+    } catch (error: any) {
+      logger.error('AI fallback failed, using knowledge-base fallback', { error: error.message });
+      return null;
+    }
   }
 
   private async searchS3KnowledgeBase(question: string, level: string): Promise<{ answer: string; documentTitle: string; note?: string } | null> {
@@ -143,7 +225,7 @@ export class KnowledgeService {
         const singleStrongMatch = distinctMatched === 1 && maxTermCount >= SINGLE_TERM_MIN_COUNT;
         if (distinctMatched < distinctTermsRequired && !singleStrongMatch) continue;
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-          const excerpt = extractRelevantExcerpt(content, questionTerms, 1000);
+          const excerpt = extractRelevantExcerpt(content, questionTerms, 700);
           bestMatch = { answer: excerpt, title, score };
         }
       }

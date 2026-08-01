@@ -72,20 +72,19 @@ Full endpoint reference (methods, request/response, lambdas): [docs/api.md](docs
 
 ## AI Integration
 
-The OpenAI provider is already written (`backend/src/infrastructure/ai/openai-provider.ts`, default via `AI_PROVIDER=openai`) but **not wired into the answer flow yet** — unanswered questions currently return `"[AI integration pending] ..."`.
+When the knowledge base cannot answer confidently, the backend falls back to OpenAI to refine a clean answer from the closest curriculum excerpt. The provider is `backend/src/infrastructure/ai/openai-provider.ts` (default via `AI_PROVIDER=openai`) and is **already wired into the answer flow**. Until an API key is set, unanswered questions return a `"[Model integration pending] ..."` placeholder.
 
-To connect it:
+To enable it:
 
 1. Create an OpenAI API key at platform.openai.com. Never commit it.
 2. Store it as a GitHub secret:
    ```bash
    gh secret set OPENAI_API_KEY -R wazaglo/eduportal-azubi-success
    ```
-   The deploy workflow already injects `AI_PROVIDER=openai`, `OPENAI_MODEL=gpt-4o-mini`, and `OPENAI_API_KEY` into every Lambda.
-3. In `backend/src/services/knowledge-service.ts`, replace the `"[AI integration pending] ..."` branch with `ProviderFactory.getProvider().generateResponse(...)` and return `{ answer: result.content, source: 'model' }`.
-4. `OPENAI_MODEL` defaults to `gpt-4o-mini`; `gpt-4o` is used automatically for questions that request reasoning.
+   The deploy workflow injects `AI_PROVIDER=openai`, `OPENAI_MODEL=gpt-4o-mini`, and `OPENAI_API_KEY` into every Lambda. Without a secret, the variable is empty and the fallback is skipped.
+3. `OPENAI_MODEL` defaults to `gpt-4o-mini`; `gpt-4o` is used automatically for questions that request reasoning.
 
-No frontend changes are needed.
+No code or frontend changes are needed.
 
 ## CI/CD
 

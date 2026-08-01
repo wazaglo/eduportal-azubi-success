@@ -24,7 +24,7 @@ export class QuestionService {
     const answer = await this.knowledgeService.getAnswer(input.question, '', 'academic');
     const subject = input.subject?.trim() || this.knowledgeService.detectSubject(input.question) || null;
 
-    const isPending = answer.source === 'model';
+    const isPending = answer.pending === true;
     const question: Question = {
       questionId: uuidv4(),
       userId: input.userId,
@@ -32,7 +32,7 @@ export class QuestionService {
       normalizedQuestion: this.normalize(input.question),
       response: answer.answer,
       subject,
-      source: isPending ? 'pending' : 'knowledge_base',
+      source: isPending ? 'pending' : (answer.source === 'model' ? 'ai' : 'knowledge_base'),
       status: isPending ? 'pending' : 'answered',
       documentTitle: answer.documentTitle,
       createdAt: new Date().toISOString(),

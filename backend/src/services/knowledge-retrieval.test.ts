@@ -140,6 +140,20 @@ describe('extractRelevantExcerpt', () => {
     const content = 'hello world';
     expect(extractRelevantExcerpt(content, ['quadratic'], 1000)).toBe('hello world');
   });
+
+  it('snaps the excerpt window to sentence boundaries', () => {
+    const before = 'An unrelated introductory paragraph about science. '.repeat(3);
+    const target =
+      'Gradient is the steepness of a line. The gradient of y = mx + c is m. ' +
+      'Compute the equation of a line through two points using the gradient.';
+    const after = 'Following unrelated content continues here. '.repeat(20);
+    const content = before + target + after;
+
+    const excerpt = extractRelevantExcerpt(content, ['gradient', 'line'], 700);
+    expect(excerpt.startsWith('...')).toBe(true);
+    expect(excerpt).toContain('The gradient of y = mx + c is m.');
+    expect(excerpt.endsWith('...')).toBe(true);
+  });
 });
 
 describe('thresholds', () => {

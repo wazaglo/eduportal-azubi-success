@@ -82,6 +82,7 @@ describe('QuestionService.ask', () => {
           answer: '[Model integration pending] ...',
           source: 'model',
           cached: false,
+          pending: true,
         })),
       },
     });
@@ -89,6 +90,22 @@ describe('QuestionService.ask', () => {
     const question = await service.ask({ userId: 'user-1', question: 'something obscure' });
     expect(question.source).toBe('pending');
     expect(question.status).toBe('pending');
+  });
+
+  it('marks an AI answer as answered with the ai source', async () => {
+    const { service } = buildService({
+      knowledge: {
+        getAnswer: vi.fn(async () => ({
+          answer: 'The equation of the line is y = (2/3)x - 5/3.',
+          source: 'model',
+          cached: false,
+        })),
+      },
+    });
+
+    const question = await service.ask({ userId: 'user-1', question: 'equation of a line through two points' });
+    expect(question.source).toBe('ai');
+    expect(question.status).toBe('answered');
   });
 
   it('prefers an explicit subject from the caller', async () => {

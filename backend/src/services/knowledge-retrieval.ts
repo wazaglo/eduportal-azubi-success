@@ -7,8 +7,8 @@ export const PROXIMITY_BONUS_MAX = 40;
 export const MIN_CONFIDENT_SCORE = 15;
 export const MIN_WEAK_SCORE = 3;
 export const WEAK_MATCH_NOTE =
-  '[Note: the knowledge base has no detailed material on this exact topic. ' +
-  'The closest curriculum content is shown above; ask your teacher or check your textbook for a fuller answer.]';
+  '[Note: the knowledge base only touches on this topic. The closest curriculum excerpt is shown above; ' +
+  'ask your teacher or check your textbook for a fuller explanation.]';
 // A document is accepted on a single distinct matched term only when that
 // term occurs frequently enough that the match is clearly on-topic and not a
 // lone, incidental mention.
@@ -211,12 +211,33 @@ export function extractRelevantExcerpt(content: string, questionTerms: string[],
 
   const start = Math.max(0, bestStart - 120);
   const end = Math.min(content.length, start + maxChars);
-  let excerpt = content.substring(start, end).trim();
+  const absoluteStart = snapStart(lower, start, content);
+  const absoluteEnd = snapEnd(lower, end, content);
+  let excerpt = content.substring(absoluteStart, absoluteEnd).trim();
 
-  if (start > 0) excerpt = '...' + excerpt;
-  if (end < content.length) excerpt = excerpt + '...';
+  if (absoluteStart > 0) excerpt = '...' + excerpt;
+  if (absoluteEnd < content.length) excerpt = excerpt + '...';
 
   return excerpt;
+}
+
+// Snap a window edge to a nearby sentence boundary so excerpts read cleanly
+// instead of starting/ending mid-sentence.
+function snapStart(lower: string, start: number, content: string): number {
+  const lookback = Math.min(start, 200);
+  const window = lower.substring(start - lookback, start);
+  const idx = window.lastIndexOf('. ');
+  if (idx === -1) return start;
+  const candidate = start - lookback + idx + 2;
+  return lower.substring(candidate).startsWith(' the ') ? candidate : start;
+}
+
+function snapEnd(lower: string, end: number, content: string): number {
+  const lookahead = Math.min(lower.length - end, 200);
+  const window = lower.substring(end, end + lookahead);
+  const idx = window.indexOf('. ');
+  if (idx === -1) return end;
+  return end + idx + 1;
 }
 
 export function escapeRegExp(s: string): string {
