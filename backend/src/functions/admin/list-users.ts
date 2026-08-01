@@ -4,11 +4,13 @@ import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema, paginationSchema } from '../../utils/validator';
 import { requireAdmin } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
+const roleResolver = defaultRoleResolver();
 
 const userRepo = new DynamoUserRepository();
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  requireAdmin(event);
+  await requireAdmin(event, roleResolver);
   const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
   const roleFilter = event.queryStringParameters?.role;
 

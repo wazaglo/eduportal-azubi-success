@@ -6,13 +6,15 @@ import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema, paginationSchema } from '../../utils/validator';
 import { extractAndVerifyUser } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
+const roleResolver = defaultRoleResolver();
 
 const feedbackRepo = new DynamoFeedbackRepository();
 const analyticsRepo = new DynamoAnalyticsRepository();
 const feedbackService = new FeedbackService(feedbackRepo, analyticsRepo);
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = extractAndVerifyUser(event);
+  const user = await extractAndVerifyUser(event, roleResolver);
   const queryParams = validateSchema(paginationSchema, event.queryStringParameters ?? {});
 
   const result = await feedbackService.getUserFeedback(user.userId, queryParams.limit as number, queryParams.nextToken);

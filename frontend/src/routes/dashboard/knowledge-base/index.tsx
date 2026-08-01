@@ -1,4 +1,4 @@
-import { component$, useSignal, useStore, useVisibleTask$ } from "@builder.io/qwik";
+import { component$, useSignal, useStore, useVisibleTask$, $ } from "@builder.io/qwik";
 import {
   DatabaseIcon,
   SearchIcon,
@@ -6,6 +6,7 @@ import {
   ClockIcon,
   FilterIcon,
   ChevronDownIcon,
+  DownloadIcon,
 } from "lucide-qwik";
 import { Badge } from "~/components/atoms/Badge";
 import {
@@ -13,6 +14,7 @@ import {
   SHS_SUBJECTS,
   formatBytes,
   formatDate,
+  getDownloadUrl,
   listDocuments,
   type KnowledgeDocument,
 } from "~/utils/knowledge-base";
@@ -32,6 +34,17 @@ export default component$(() => {
       loadError.value = "Failed to load the knowledge base. Please sign in again.";
     }
   });
+
+  const handleDownload = $(
+    async (subject: string) => {
+      try {
+        const { downloadUrl } = await getDownloadUrl(subject);
+        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      } catch {
+        loadError.value = "Unable to prepare the curriculum PDF. Please try again.";
+      }
+    }
+  );
 
   const filtered = () => {
     return documents.value.filter((d) => {
@@ -143,7 +156,14 @@ export default component$(() => {
                   {formatDate(doc.uploadedAt)}
                 </span>
               </div>
-              <span class="text-primary-600 font-medium text-xs">{doc.downloads} downloads</span>
+              <button
+                onClick$={() => handleDownload(doc.subject)}
+                class="flex items-center gap-1 text-primary-600 font-medium text-xs hover:text-primary-700 transition-colors"
+                title={`Download the official ${doc.subject} curriculum PDF`}
+              >
+                <DownloadIcon class="h-3 w-3" />
+                Download PDF
+              </button>
             </div>
           </div>
         ))}

@@ -1,16 +1,16 @@
 # API Reference
 
-Base URL: `https://api.student-support.ai/v1`
+Base URL (dev stage): `https://kzhykroge1.execute-api.eu-west-1.amazonaws.com/dev`
 
 ## Authentication
 
-All authenticated endpoints require a Bearer token in the `Authorization` header:
+All endpoints require a Bearer token in the `Authorization` header, except the public auth endpoints:
 
 ```
-Authorization: Bearer <access_token>
+Authorization: Bearer <id_token>
 ```
 
-Tokens are JSON Web Tokens (JWT) issued by Amazon Cognito. Access tokens expire after 1 hour. Use the refresh token endpoint to obtain a new access token without re-authenticating.
+Tokens are issued by Amazon Cognito. **API Gateway validates the Cognito ID token** (`COGNITO_USER_POOLS` authorizer) before the request reaches a Lambda; each handler then resolves the user and role from the users table via the `sub` claim (`extractAndVerifyUser`, `defaultRoleResolver`). Admin endpoints additionally require the `admin` role (`requireAdmin`). Send the **ID token** (`tokens.idToken`), not the access token — the gateway accepts ID tokens.
 
 ### Error Codes
 
@@ -21,37 +21,156 @@ Tokens are JSON Web Tokens (JWT) issued by Amazon Cognito. Access tokens expire 
 | 403 | `AUTHORIZATION_ERROR` | Insufficient role permissions |
 | 404 | `NOT_FOUND` | Resource does not exist |
 | 409 | `CONFLICT` | Resource already exists (e.g., duplicate email) |
-| 429 | `RATE_LIMIT` | Too many requests (rate limit exceeded) |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
-| 503 | `SERVICE_UNAVAILABLE` | Service temporarily unavailable |
+| 503 | `SERVICE_UNAVAILABLE` | Health check degraded/unhealthy |
 
 Error response format:
 
 ```json
 {
+  "success": false,
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Validation failed",
-    "details": {
-      "issues": [
-        {
-          "path": "email",
-          "message": "Invalid email address",
-          "code": "invalid_string"
-        }
-      ]
-    }
+    "code": "AUTHENTICATION_ERROR",
+    "message": "Missing Authorization header"
   }
 }
 ```
 
 ---
 
-## Auth Endpoints
+## Questions (Cognito)
+
+The core domain. Asking a question searches the NaCCA knowledge base for the best matching curriculum section and returns a grounded answer, falling back to AI when nothing matches well.
+
+### POST /ask
+
+Ask a question.
+
+**Request:**
+
+```json
+{
+  "question": "What is photosynthesis in plants?",
+  "subject": "Integrated Science"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| question | string | Yes | Question text (1-2000 chars) |
+| subject | string | No | Hint: one of `English Language`, `Core Mathematics`, `Integrated Science`, `Social Studies` |
+
+**Response** `201 Created`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "questionId": "cf4ba04f-c051-44c0-afee-87a0eebd8161",
+    "question": "What is photosynthesis in plants?",
+    "answer": "<curriculum excerpt or AI answer>",
+    "subject": "Integrated Science",
+    "source": "knowledge_base",
+    "status": "answered",
+    "documentTitle": "PROCESSES_FOR_LIVING/Integrated_Science-SHS1-sprocesses-for-living_essentials-for-survival.txt",
+    "createdAt": "2026-08-01T18:15:40.545Z"
+  }
+}
+```
+
+`source` is `knowledge_base` when the answer is grounded in the curriculum, `ai` when it fell back to the model.
+
+### GET /question
+
+List the current user's questions, newest first.
+
+**Query Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| limit | integer | 20 | Max items (1-100) |
+| nextToken | string | - | Pagination token from a previous response |
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "questionId": "cf4ba04f-c051-44c0-afee-87a0eebd8161",
+      "question": "What is photosynthesis in plants?",
+      "normalizedQuestion": "what is photosynthesis in plants?",
+      "subject": "Integrated Science",
+      "documentTitle": "PROCESSES_FOR_LIVING/...txt",
+      "status": "answered",
+      "createdAt": "2026-08-01T18:15:40.545Z",
+      "updatedAt": "2026-08-01T18:15:40.545Z",
+      "response": "<answer text>",
+      "userId": "c285f4b4-5071-7024-ffa5-a81e73c1447b"
+    }
+  ],
+  "metadata": {
+    "limit": 20,
+    "total": 1
+  }
+}
+```
+
+### GET /FAQ
+
+Top asked questions across all users, by ask count.
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "question": "What is photosynthesis in Integrated Science?",
+      "count": 4,
+      "response": "<sample answer text>",
+      "subject": "Integrated Science"
+    }
+  ],
+  "metadata": {
+    "limit": 10,
+    "total": 1
+  }
+}
+```
+
+### DELETE /question/{id}
+
+Delete the current user's question. Only the owner (or an admin) may delete it.
+
+**Path Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| id | uuid | Question ID |
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Question deleted successfully"
+  }
+}
+```
+
+Deleting a question that does not exist (or belongs to another user) returns `404 NOT_FOUND`.
+
+---
+
+## Auth Endpoints (public)
 
 ### POST /auth/register
 
-Create a new user account. Triggers a verification email via Cognito.
+Create a new user account. Default role is `student`.
 
 **Request:**
 
@@ -69,38 +188,15 @@ Create a new user account. Triggers a verification email via Cognito.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| email | string | Yes | Valid university email address |
-| password | string | Yes | Min 8 chars, must include uppercase, lowercase, digit, and special character |
-| fullName | string | Yes | Full display name |
+| email | string | Yes | Valid email address |
+| password | string | Yes | 8-128 chars |
+| fullName | string | Yes | Display name (max 100) |
 | role | string | No | `student` (default), `support`, or `admin` |
 | department | string | No | Academic department |
 | enrollmentYear | number | No | Year of enrollment |
 | courseOfStudy | string | No | Course or program name |
 
-**Response** `201 Created`:
-
-```json
-{
-  "user": {
-    "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "email": "student@university.edu",
-    "fullName": "Jane Doe",
-    "role": "student",
-    "department": "Computer Science",
-    "enrollmentYear": 2025,
-    "courseOfStudy": "BSc Computer Science",
-    "isActive": false,
-    "isEmailVerified": false,
-    "createdAt": "2025-08-15T10:30:00Z"
-  },
-  "tokens": {
-    "accessToken": "eyJhbGciOiJSUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJSUzI1NiIs...",
-    "idToken": "eyJhbGciOiJSUzI1NiIs...",
-    "expiresIn": 3600
-  }
-}
-```
+**Response** `201 Created` — `data` contains `user` and `tokens` (access + refresh).
 
 ### POST /auth/login
 
@@ -119,325 +215,54 @@ Authenticate with email and password.
 
 ```json
 {
-  "user": {
-    "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "email": "student@university.edu",
-    "fullName": "Jane Doe",
-    "role": "student"
-  },
-  "tokens": {
-    "accessToken": "eyJhbGciOiJSUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJSUzI1NiIs...",
-    "idToken": "eyJhbGciOiJSUzI1NiIs...",
-    "expiresIn": 3600
+  "success": true,
+  "data": {
+    "user": {
+      "userId": "c285f4b4-5071-7024-ffa5-a81e73c1447b",
+      "email": "student@university.edu",
+      "fullName": "Jane Doe",
+      "role": "student"
+    },
+    "tokens": {
+      "accessToken": "<access-token>",
+      "refreshToken": "<refresh-token>",
+      "expiresIn": 3600
+    }
   }
-}
-```
-
-### POST /auth/verify-email
-
-Confirm a user's email address using the verification code sent during registration.
-
-**Request:**
-
-```json
-{
-  "email": "student@university.edu",
-  "code": "123456"
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| email | string | Yes | Email address to verify |
-| code | string | Yes | 6-digit verification code from email |
-
-**Response** `200 OK`:
-
-```json
-{
-  "message": "Email verified successfully"
-}
-```
-
-### POST /auth/reset-password
-
-Request a password reset or confirm a password reset.
-
-**Step 1 - Request reset code:**
-
-```json
-{
-  "email": "student@university.edu",
-  "action": "request"
-}
-```
-
-**Step 2 - Confirm reset with code:**
-
-```json
-{
-  "email": "student@university.edu",
-  "action": "confirm",
-  "code": "654321",
-  "newPassword": "NewSecureP@ss456"
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| email | string | Yes | Account email address |
-| action | string | Yes | `request` or `confirm` |
-| code | string | For confirm | 6-digit reset code from email |
-| newPassword | string | For confirm | New password meeting complexity requirements |
-
-**Response** `200 OK`:
-
-```json
-{
-  "message": "Password reset successful"
 }
 ```
 
 ### POST /auth/refresh-token
 
-Obtain a new access token using a valid refresh token.
+Obtain a new access token from a refresh token.
 
-**Request:**
+**Request:** `{ "refreshToken": "<refresh-token>" }`
 
-```json
-{
-  "refreshToken": "eyJhbGciOiJSUzI1NiIs..."
-}
-```
+### POST /auth/verify-email
 
-**Response** `200 OK`:
+Confirm a user's email address with the verification code sent during registration.
 
-```json
-{
-  "accessToken": "eyJhbGciOiJSUzI1NiIs...",
-  "idToken": "eyJhbGciOiJSUzI1NiIs...",
-  "expiresIn": 3600
-}
-```
+**Request:** `{ "email": "student@university.edu", "code": "123456" }`
 
----
+### POST /auth/resend-verification-code
 
-## Chat Endpoints
+Resend the email verification code.
 
-Requires `Bearer` token. Available to `student`, `support`, and `admin` roles.
+**Request:** `{ "email": "student@university.edu" }`
 
-### POST /chat/send
+### POST /auth/reset-password
 
-Send a message to the AI assistant or continue an existing conversation. If `conversationId` is omitted, a new conversation is created.
-
-**Request:**
-
-```json
-{
-  "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "content": "Can you help me understand the requirements for my calculus assignment?",
-  "queryType": "academic",
-  "requireAsync": false
-}
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| conversationId | string (uuid) | No | null | Existing conversation ID. Omit to start a new conversation |
-| content | string | Yes | - | Message text (max 10,000 characters) |
-| queryType | string | No | `general` | `academic`, `administrative`, or `general` |
-| requireAsync | boolean | No | `false` | If `true`, processes asynchronously via SQS; returns 202 with a `messageId` |
-
-**Response** `200 OK` (synchronous):
-
-```json
-{
-  "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "userMessage": {
-    "messageId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-    "role": "user",
-    "content": "Can you help me understand the requirements for my calculus assignment?",
-    "queryType": "academic",
-    "timestamp": "2025-08-15T10:31:00Z"
-  },
-  "aiMessage": {
-    "messageId": "d4e5f6a7-b8c9-0123-defa-234567890123",
-    "role": "assistant",
-    "content": "I'd be happy to help with your calculus assignment! Could you tell me which specific topic you're working on? Topics include limits, derivatives, integrals, and series. Knowing the area will help me provide the most relevant guidance.",
-    "queryType": "academic",
-    "modelUsed": "amazon.nova-lite-v1:0",
-    "latencyMs": 1240,
-    "tokensUsed": {
-      "prompt": 245,
-      "completion": 58,
-      "total": 303
-    },
-    "timestamp": "2025-08-15T10:31:02Z"
-  },
-  "sources": [
-    {
-      "title": "Calculus I Syllabus 2025",
-      "relevance": 0.92,
-      "url": "/knowledge-base/calc1-syllabus-2025"
-    }
-  ]
-}
-```
-
-**Response** `202 Accepted` (async):
-
-```json
-{
-  "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "messageId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "status": "processing"
-}
-```
-
-### GET /chat/conversations
-
-List all conversations for the authenticated user. Supports pagination.
-
-**Query Parameters:**
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| limit | integer | 20 | Max items per page (1-100) |
-| nextToken | string | - | Pagination token from previous response |
-| status | string | - | Filter by status: `active`, `archived`, `resolved` |
-| sortOrder | string | `DESC` | `ASC` or `DESC` (by last activity) |
-
-**Response** `200 OK`:
-
-```json
-{
-  "conversations": [
-    {
-      "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-      "title": "Calculus Assignment Help",
-      "status": "active",
-      "messageCount": 12,
-      "lastMessageAt": "2025-08-15T10:31:02Z",
-      "createdAt": "2025-08-14T09:00:00Z",
-      "lastMessagePreview": "I'd be happy to help with your calculus assignment!"
-    }
-  ],
-  "pagination": {
-    "limit": 20,
-    "total": 1,
-    "nextToken": "eyJsYXN0RXZhbHVhdGVkS2V5Ijp7fQ=="
-  }
-}
-```
-
-### GET /chat/conversations/{id}
-
-Retrieve a full conversation with all messages.
-
-**Path Parameters:**
-
-| Param | Type | Description |
-|-------|------|-------------|
-| id | uuid | Conversation ID |
-
-**Response** `200 OK`:
-
-```json
-{
-  "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "title": "Calculus Assignment Help",
-  "status": "active",
-  "metadata": {
-    "queryTypes": ["academic", "general"],
-    "totalTokensUsed": 1250,
-    "averageLatencyMs": 980
-  },
-  "messages": [
-    {
-      "messageId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-      "role": "user",
-      "content": "Can you help me understand the requirements for my calculus assignment?",
-      "queryType": "academic",
-      "timestamp": "2025-08-15T10:31:00Z"
-    },
-    {
-      "messageId": "d4e5f6a7-b8c9-0123-defa-234567890123",
-      "role": "assistant",
-      "content": "I'd be happy to help with your calculus assignment!...",
-      "queryType": "academic",
-      "modelUsed": "amazon.nova-lite-v1:0",
-      "latencyMs": 1240,
-      "tokensUsed": { "prompt": 245, "completion": 58, "total": 303 },
-      "timestamp": "2025-08-15T10:31:02Z"
-    }
-  ],
-  "feedback": [
-    {
-      "rating": 5,
-      "category": "helpfulness",
-      "comment": "Very helpful explanation!",
-      "createdAt": "2025-08-15T11:00:00Z"
-    }
-  ],
-  "createdAt": "2025-08-14T09:00:00Z",
-  "updatedAt": "2025-08-15T10:31:02Z"
-}
-```
-
-### DELETE /chat/conversations/{id}
-
-Delete a conversation and all its messages.
-
-**Path Parameters:**
-
-| Param | Type | Description |
-|-------|------|-------------|
-| id | uuid | Conversation ID |
-
-**Response** `204 No Content`.
+Request a reset code (`{ "email": "..." }`) or confirm a reset (`{ "email": "...", "code": "...", "newPassword": "..." }`). The `newPassword` must be 8-128 chars.
 
 ---
 
-## User Endpoints
-
-Requires `Bearer` token. Available to all authenticated users.
+## User Endpoints (Cognito)
 
 ### GET /user/profile
 
 Retrieve the authenticated user's profile.
 
-**Response** `200 OK`:
-
-```json
-{
-  "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "email": "student@university.edu",
-  "fullName": "Jane Doe",
-  "role": "student",
-  "department": "Computer Science",
-  "enrollmentYear": 2025,
-  "courseOfStudy": "BSc Computer Science",
-  "isActive": true,
-  "isEmailVerified": true,
-  "avatarUrl": "https://cdn.student-support.ai/avatars/a1b2c3d4.jpg",
-  "preferences": {
-    "theme": "light",
-    "language": "en",
-    "notificationsEnabled": true
-  },
-  "stats": {
-    "totalConversations": 15,
-    "totalMessages": 89,
-    "averageRating": 4.7,
-    "memberSince": "2025-01-10T08:00:00Z"
-  },
-  "createdAt": "2025-01-10T08:00:00Z",
-  "updatedAt": "2025-08-15T10:30:00Z"
-}
-```
-
-### PUT /user/profile
+### POST /user/profile
 
 Update the authenticated user's profile.
 
@@ -450,49 +275,19 @@ Update the authenticated user's profile.
   "courseOfStudy": "MSc Applied Mathematics",
   "preferences": {
     "theme": "dark",
-    "notificationsEnabled": false
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| fullName | string | No | Updated display name |
-| department | string | No | Academic department |
-| courseOfStudy | string | No | Course or program |
-| preferences.theme | string | No | `light` or `dark` |
-| preferences.language | string | No | Locale code (e.g., `en`, `es`, `fr`) |
-| preferences.notificationsEnabled | boolean | No | Toggle push notifications |
-
-**Response** `200 OK`:
-
-```json
-{
-  "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "email": "student@university.edu",
-  "fullName": "Jane Smith",
-  "role": "student",
-  "department": "Mathematics",
-  "courseOfStudy": "MSc Applied Mathematics",
-  "isActive": true,
-  "preferences": {
-    "theme": "dark",
     "language": "en",
-    "notificationsEnabled": false
-  },
-  "updatedAt": "2025-08-15T11:00:00Z"
+    "notifications": false
+  }
 }
 ```
 
 ---
 
-## Feedback Endpoints
-
-Requires `Bearer` token. Available to `student` role.
+## Feedback Endpoints (Cognito)
 
 ### POST /feedback
 
-Submit feedback on an AI response. Each message can receive feedback only once per user; subsequent submissions overwrite the previous.
+Submit feedback on an AI response. Submitting again for the same `messageId` overwrites the previous entry.
 
 **Request:**
 
@@ -510,400 +305,85 @@ Submit feedback on an AI response. Each message can receive feedback only once p
 |-------|------|----------|-------------|
 | messageId | string (uuid) | Yes | The AI message to rate |
 | conversationId | string (uuid) | No | Conversation the message belongs to |
-| rating | integer | Yes | 1-5 star rating |
+| rating | integer | Yes | 1-5 |
 | category | string | No | `accuracy`, `relevance`, `helpfulness`, `clarity`, `other` |
-| comment | string | No | Optional text feedback (max 2,000 characters) |
-
-**Response** `201 Created`:
-
-```json
-{
-  "feedback": {
-    "feedbackId": "e5f6a7b8-c9d0-1234-efab-345678901234",
-    "messageId": "d4e5f6a7-b8c9-0123-defa-234567890123",
-    "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "rating": 5,
-    "category": "helpfulness",
-    "comment": "This answer was exactly what I needed!",
-    "createdAt": "2025-08-15T11:30:00Z"
-  }
-}
-```
+| comment | string | No | Max 2000 chars |
 
 ### GET /feedback
 
-Retrieve feedback submitted by the authenticated user. Supports pagination.
-
-**Query Parameters:**
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| limit | integer | 20 | Items per page (1-100) |
-| nextToken | string | - | Pagination token |
-| sortOrder | string | `DESC` | `ASC` or `DESC` (by creation date) |
-
-**Response** `200 OK`:
-
-```json
-{
-  "feedback": [
-    {
-      "feedbackId": "e5f6a7b8-c9d0-1234-efab-345678901234",
-      "conversationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-      "messageId": "d4e5f6a7-b8c9-0123-defa-234567890123",
-      "rating": 5,
-      "category": "helpfulness",
-      "comment": "This answer was exactly what I needed!",
-      "createdAt": "2025-08-15T11:30:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 20,
-    "total": 1,
-    "nextToken": null
-  }
-}
-```
+List the current user's feedback (`limit` ≤ 100, `nextToken`).
 
 ---
 
-## Knowledge Base Endpoints
+## Knowledge Base Endpoints (Cognito)
 
-The knowledge base stores Ghana SHS curriculum documents (NaCCA) in S3, organized by `Year / Subject / Strand / Sub-Strand`. Chat answers can reference these documents.
-
-Requires `Bearer` token. Listing is available to any authenticated user; upload and delete require the `admin` role.
+The knowledge base stores parsed NaCCA curriculum sections for **4 subjects**: English Language, Core Mathematics, Integrated Science, Social Studies. Documents live in `knowledge/{Subject}/{Strand}/` in the `eduportal-azubi-success-knowledge-base` bucket. Listing requires any authenticated user; upload/delete require `admin`.
 
 ### GET /knowledge-base/documents
 
 List documents, optionally filtered.
 
-**Query Parameters:**
+**Query Parameters:** `year` (`SHS1`-`SHS3`), `subject`, `strand`, `substrand`, `limit` (default 1000, max 1000).
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| year | string | - | Filter by level: `SHS1`, `SHS2`, `SHS3` |
-| subject | string | - | Filter by subject (e.g., `Integrated Science`) |
-| strand | string | - | Filter by strand name |
-| substrand | string | - | Filter by sub-strand name |
-| limit | integer | 1000 | Max items to return (1-1000) |
+### GET /knowledge-base/download-url
 
-**Response** `200 OK`:
-
-```json
-{
-  "data": [
-    {
-      "documentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-      "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-      "year": "SHS1",
-      "subject": "Integrated Science",
-      "strand": "Vigour Behind Life",
-      "substrand": "Consumer Electronics",
-      "size": 3549,
-      "contentType": "text/markdown",
-      "status": "indexed",
-      "uploadedBy": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "uploadedAt": "2026-07-31T14:00:00Z",
-      "downloads": 0
-    }
-  ]
-}
-```
+Get a presigned S3 download URL for a subject's curriculum PDF.
 
 ### POST /knowledge-base/presign-upload
 
-*Admin only.* Obtain a presigned S3 PUT URL for a new document. After uploading the file to that URL, call `complete-upload`.
-
-**Request:**
-
-```json
-{
-  "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-  "contentType": "text/markdown",
-  "year": "SHS1",
-  "subject": "Integrated Science",
-  "strand": "Vigour Behind Life",
-  "substrand": "Consumer Electronics"
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| fileName | string | Yes | File name (max 255 chars) |
-| contentType | string | Yes | MIME type of the file |
-| year | string | Yes | `SHS1`, `SHS2`, or `SHS3` |
-| subject | string | Yes | One of the 28 supported subjects |
-| strand | string | Yes | Strand name (max 120 chars) |
-| substrand | string | Yes | Sub-strand name (max 120 chars) |
-
-**Response** `200 OK`:
-
-```json
-{
-  "data": {
-    "uploadUrl": "https://eduportal-azubi-success-knowledge-base.s3.eu-west-1.amazonaws.com/knowledge/SHS1/...?X-Amz-Signature=...",
-    "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-    "expiresIn": 300,
-    "uploadedBy": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-  }
-}
-```
-
-The upload URL expires after 300 seconds. Spaces in `year`/`subject`/`strand`/`substrand` are replaced with underscores in the S3 key.
+*Admin only.* Obtain a presigned S3 PUT URL. `year` must be `SHS1`/`SHS2`/`SHS3`; `subject` must be one of the 4 supported subjects.
 
 ### POST /knowledge-base/complete-upload
 
-*Admin only.* Register document metadata after the file has been uploaded to S3.
-
-**Request:**
-
-```json
-{
-  "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-  "fileName": "integrated-science-SHS1-vigour-behind-life-consumer-electronics.md",
-  "year": "SHS1",
-  "subject": "Integrated Science",
-  "strand": "Vigour Behind Life",
-  "substrand": "Consumer Electronics",
-  "size": 3549,
-  "contentType": "text/markdown"
-}
-```
-
-**Response** `201 Created` — returns the created document record.
+*Admin only.* Register document metadata after uploading to S3.
 
 ### DELETE /knowledge-base/documents
 
-*Admin only.* Delete a document from the knowledge base (removes both the S3 object and its metadata).
-
-**Request:**
-
-```json
-{
-  "documentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "s3Key": "knowledge/SHS1/Integrated_Science/Vigour_Behind_Life/Consumer_Electronics/integrated-science-SHS1-vigour-behind-life-consumer-electronics.md"
-}
-```
-
-**Response** `200 OK`:
-
-```json
-{
-  "data": {
-    "deleted": true
-  }
-}
-```
+*Admin only.* Delete a document. Request: `{ "documentId": "...", "s3Key": "..." }`.
 
 ---
 
-## Admin Endpoints
-
-Requires `Bearer` token with `admin` role.
+## Admin Endpoints (Cognito + admin role)
 
 ### GET /admin/users
 
-List all users in the system with optional role filtering and pagination.
-
-**Query Parameters:**
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| role | string | - | Filter by role: `student`, `support`, `admin` |
-| limit | integer | 20 | Items per page (1-100) |
-| nextToken | string | - | Pagination token |
-| sortOrder | string | `DESC` | `ASC` or `DESC` |
-
-**Response** `200 OK`:
-
-```json
-{
-  "users": [
-    {
-      "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "email": "student@university.edu",
-      "fullName": "Jane Doe",
-      "role": "student",
-      "department": "Computer Science",
-      "isActive": true,
-      "isEmailVerified": true,
-      "createdAt": "2025-01-10T08:00:00Z",
-      "lastLoginAt": "2025-08-15T10:30:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 20,
-    "total": 1,
-    "nextToken": null
-  }
-}
-```
-
-### GET /admin/analytics
-
-Retrieve system-wide analytics and metrics.
-
-**Query Parameters:**
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| startDate | string | 30 days ago | ISO 8601 start date |
-| endDate | string | now | ISO 8601 end date |
-| granularity | string | `day` | `hour`, `day`, `week`, `month` |
-
-**Response** `200 OK`:
-
-```json
-{
-  "summary": {
-    "totalUsers": 1250,
-    "activeUsers": 342,
-    "totalConversations": 8750,
-    "totalMessages": 45200,
-    "averageResponseTimeMs": 890,
-    "averageSatisfactionScore": 4.3,
-    "resolutionRate": 0.87,
-    "escalationRate": 0.12
-  },
-  "trends": [
-    {
-      "period": "2025-08-15",
-      "conversations": 320,
-      "messages": 1650,
-      "newUsers": 28,
-      "avgSatisfaction": 4.2,
-      "avgResponseTimeMs": 920
-    }
-  ],
-  "topQueries": [
-    {
-      "queryType": "academic",
-      "count": 4200,
-      "percentage": 48.0
-    },
-    {
-      "queryType": "administrative",
-      "count": 2800,
-      "percentage": 32.0
-    },
-    {
-      "queryType": "general",
-      "count": 1750,
-      "percentage": 20.0
-    }
-  ],
-  "peakHours": [
-    { "hour": 10, "conversations": 450 },
-    { "hour": 14, "conversations": 520 },
-    { "hour": 20, "conversations": 380 }
-  ]
-}
-```
+List all users (`role` filter, `limit` ≤ 100, `nextToken`).
 
 ### PUT /admin/users/{id}
 
-Update any user's account details. Admin-only.
+Update a user. Body fields: `role` (`student`/`support`/`admin`), `isActive`, `department`, `fullName`.
 
-**Path Parameters:**
+### GET /admin/analytics
 
-| Param | Type | Description |
-|-------|------|-------------|
-| id | uuid | User ID |
-
-**Request:**
-
-```json
-{
-  "role": "support",
-  "department": "IT Support",
-  "isActive": true
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| role | string | No | `student`, `support`, or `admin` |
-| department | string | No | Department assignment |
-| isActive | boolean | No | Activate or deactivate account |
-
-**Response** `200 OK`:
-
-```json
-{
-  "userId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "email": "student@university.edu",
-  "fullName": "Jane Doe",
-  "role": "support",
-  "department": "IT Support",
-  "isActive": true,
-  "updatedAt": "2025-08-15T12:00:00Z"
-}
-```
+Usage analytics. Query params: `startDate`, `endDate` (ISO 8601; default last 7 days).
 
 ### GET /admin/health
 
-System health check endpoint. Does not require authentication.
+System health over the users, questions, and cache stores.
 
-**Response** `200 OK`:
+**Response** `200 OK` (healthy) / `503` (degraded):
 
 ```json
 {
-  "status": "healthy",
-  "version": "1.0.0",
-  "timestamp": "2025-08-15T12:00:00Z",
-  "uptime": 3600000,
-  "services": {
-    "database": {
-      "status": "healthy",
-      "latencyMs": 12
-    },
-    "aiProvider": {
-      "status": "healthy",
-      "model": "amazon.nova-lite-v1:0",
-      "latencyMs": 850
-    },
-    "cache": {
-      "status": "healthy",
-      "hitRate": 0.76
-    },
-    "auth": {
-      "status": "healthy"
-    },
-    "queue": {
-      "status": "healthy",
-      "messagesAvailable": 0,
-      "messagesInFlight": 3
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "uptime": 123.4,
+    "responseTimeMs": 12,
+    "timestamp": "2026-08-01T18:00:00.000Z",
+    "checks": {
+      "users": { "healthy": true, "count": 3 },
+      "questions": { "healthy": true, "count": 12 },
+      "cache": { "healthy": true, "entries": 4 }
     }
-  },
-  "environment": "production",
-  "region": "us-east-1"
+  }
 }
 ```
 
 ---
 
-## Rate Limiting
+## Common Behavior
 
-Requests are rate-limited per user per endpoint group:
-
-| Tier | Rate Limit | Burst |
-|------|-----------|-------|
-| Chat endpoints | 60 req/min | 100 |
-| Auth endpoints | 20 req/min | 30 |
-| Admin endpoints | 120 req/min | 200 |
-| Health check | 300 req/min | 500 |
-
-Exceeded limits return `429 Too Many Requests` with a `Retry-After` header.
-
-## Pagination
-
-List endpoints use cursor-based pagination. The `nextToken` in the response is an opaque string. Pass it as a query parameter to retrieve the next page. A `null` or absent `nextToken` indicates the last page.
-
-## Common Headers
-
-| Header | Description |
-|--------|-------------|
-| `X-Request-ID` | Correlation ID for request tracing |
-| `X-RateLimit-Remaining` | Number of requests remaining in the current window |
-| `X-RateLimit-Reset` | Unix timestamp when the rate limit resets |
+- **Pagination**: list endpoints use cursor-based pagination via `nextToken`. A missing `nextToken` in `metadata` indicates the last page.
+- **CORS**: all routes respond to `OPTIONS` (MOCK) with `Access-Control-Allow-Origin: *`, methods `GET,POST,PUT,DELETE,OPTIONS`, headers `Content-Type,Authorization,X-Correlation-Id`.
+- **Correlation ID**: requests may include an `X-Correlation-Id` header, echoed in CORS allow-headers.

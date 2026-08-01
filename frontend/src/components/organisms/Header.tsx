@@ -19,7 +19,7 @@ export const Header = component$<HeaderProps>(({ onMenuToggle$, class: className
   const getTitle = (): string => {
     const path = location.url.pathname;
     if (path === "/dashboard") return "Dashboard";
-    if (path.startsWith("/dashboard/chat")) return "AI Chat";
+    if (path.startsWith("/dashboard/ask")) return "Ask a Question";
     if (path.startsWith("/dashboard/history")) return "History";
     if (path.startsWith("/dashboard/profile")) return "Profile";
     if (path.startsWith("/admin")) return "Admin Panel";

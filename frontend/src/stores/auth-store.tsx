@@ -54,9 +54,10 @@ interface AuthApiResponse {
   };
   tokens: {
     accessToken: string;
+    idToken?: string;
     refreshToken?: string;
     expiresIn?: number;
-  };
+  } | null;
 }
 
 interface ProfileResponse {
@@ -117,12 +118,16 @@ export const AuthProvider = component$(() => {
       try {
         const res = await api.post<{ data: AuthApiResponse }>("/auth/login", { email, password });
         const { user, tokens } = res.data;
+        if (!tokens) {
+          throw new Error("Account is not verified yet");
+        }
+        const authToken = tokens.idToken ?? tokens.accessToken;
         const mapped = mapUser(user);
-        state.token = tokens.accessToken;
+        state.token = authToken;
         state.user = mapped;
         state.isAuthenticated = true;
         if (typeof window !== "undefined") {
-          localStorage.setItem("auth_token", tokens.accessToken);
+          localStorage.setItem("auth_token", authToken);
           localStorage.setItem("auth_user", JSON.stringify(mapped));
         }
       } finally {
@@ -140,13 +145,20 @@ export const AuthProvider = component$(() => {
         });
         const { user, tokens } = res.data;
         const mapped = mapUser(user);
-        state.token = tokens.accessToken;
-        state.user = mapped;
-        state.isAuthenticated = true;
         state.pendingEmail = data.email;
-        if (typeof window !== "undefined") {
-          localStorage.setItem("auth_token", tokens.accessToken);
-          localStorage.setItem("auth_user", JSON.stringify(mapped));
+        if (tokens) {
+          const authToken = tokens.idToken ?? tokens.accessToken;
+          state.token = authToken;
+          state.user = mapped;
+          state.isAuthenticated = true;
+          if (typeof window !== "undefined") {
+            localStorage.setItem("auth_token", authToken);
+            localStorage.setItem("auth_user", JSON.stringify(mapped));
+          }
+        } else {
+          state.token = null;
+          state.user = null;
+          state.isAuthenticated = false;
         }
       } finally {
         state.isLoading = false;

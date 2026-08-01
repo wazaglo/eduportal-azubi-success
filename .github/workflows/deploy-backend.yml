@@ -2,21 +2,28 @@ name: Deploy Backend
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
     paths:
       - 'backend/**'
   workflow_dispatch:
 
 env:
   REGION: eu-west-1
-  ROLE_ARN: arn:aws:iam::814330181503:role/eduportal-lambda-role
+  OIDC_ROLE_ARN: arn:aws:iam::814330181503:role/eduportal-github-actions-oidc
+  LAMBDA_ROLE_ARN: arn:aws:iam::814330181503:role/eduportal-lambda-role
   RUNTIME: nodejs20.x
   MEMORY: 256
+  ASK_MEMORY: 1024
   TIMEOUT_DEFAULT: 30
-  TIMEOUT_LONG: 60
+  TIMEOUT_LONG: 120
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  deploy:
+  lint-and-test:
+    name: Lint and test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,7 +34,33 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (lint)
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
+
+  deploy:
+    name: Deploy to AWS
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -40,52 +73,103 @@ jobs:
       - name: Package deployment zips
         run: npm run package
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.OIDC_ROLE_ARN }}
+          role-session-name: github-actions-deploy
           aws-region: eu-west-1
+
+      - name: Prepare Lambda environment variables
+        run: |
+          cat > /tmp/lambda-env.json <<JSON
+          {"Variables":{
+            "TABLE_ANALYTICS": "ai-student-analytics",
+            "TABLE_CACHE": "ai-student-cache",
+            "TABLE_FEEDBACK": "ai-student-feedback",
+            "TABLE_KNOWLEDGE": "ai-student-knowledge",
+            "TABLE_QUESTIONS": "ai-student-questions",
+            "TABLE_USERS": "ai-student-users",
+            "CORS_ORIGIN": "${{ secrets.CORS_ORIGIN }}",
+            "COGNITO_CLIENT_ID": "${{ secrets.COGNITO_CLIENT_ID }}",
+            "COGNITO_USER_POOL_ID": "${{ secrets.COGNITO_USER_POOL_ID }}",
+            "KNOWLEDGE_BUCKET": "${{ secrets.KNOWLEDGE_BUCKET }}",
+            "AI_PROVIDER": "openai",
+            "OPENAI_MODEL": "gpt-4o-mini",
+            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}"
+          }}
+          JSON
 
       - name: Deploy all Lambda functions
         run: |
           shopt -s globstar
+
+          wait_ready() {
+            local fn=$1
+            for _ in $(seq 1 20); do
+              local st
+              st=$(aws lambda get-function --function-name "$fn" --region "$REGION" \
+                --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null)
+              if [ "$st" = "Successful" ] || [ "$st" = "Active" ] || [ -z "$st" ]; then
+                return 0
+              fi
+              sleep 3
+            done
+          }
+
+          run_with_retry() {
+            local fn=$1
+            shift
+            for _ in $(seq 1 5); do
+              if "$@" > /dev/null 2>&1; then
+                return 0
+              fi
+              wait_ready "$fn"
+              sleep 5
+            done
+            return 1
+          }
 
           for zip in deployments/**/*.zip; do
             handler_path="${zip#deployments/}"
             handler_path="${handler_path%.zip}"
             function_name="eduportal-${handler_path////-}"
             timeout=$TIMEOUT_DEFAULT
-            [ "$handler_path" = "chat/send-message" ] && timeout=$TIMEOUT_LONG
-            [ "$handler_path" = "ai/process-async" ] && timeout=$TIMEOUT_LONG
+            memory=$MEMORY
+            if [ "$handler_path" = "question/ask" ]; then
+              timeout=$TIMEOUT_LONG
+              memory=$ASK_MEMORY
+            fi
 
-            echo "Deploying ${function_name} (${handler_path}.main, ${timeout}s)..."
+            echo "Deploying ${function_name} (${handler_path}.main, ${timeout}s, ${memory}MB)..."
 
             if aws lambda get-function --function-name "$function_name" --region "$REGION" &>/dev/null; then
-              # Update config first (fast), then code (slow) to avoid conflict
-              aws lambda update-function-configuration \
+              run_with_retry "$function_name" aws lambda update-function-code \
+                --function-name "$function_name" \
+                --zip-file "fileb://${zip}" \
+                --region "$REGION"
+
+              run_with_retry "$function_name" aws lambda update-function-configuration \
                 --function-name "$function_name" \
                 --handler "${handler_path}.main" \
                 --timeout "$timeout" \
-                --memory-size "$MEMORY" \
-                --region "$REGION" > /dev/null
-
-              aws lambda update-function-code \
-                --function-name "$function_name" \
-                --zip-file "fileb://${zip}" \
+                --memory-size "$memory" \
+                --environment "file:///tmp/lambda-env.json" \
                 --region "$REGION"
             else
               aws lambda create-function \
                 --function-name "$function_name" \
                 --runtime "$RUNTIME" \
-                --role "$ROLE_ARN" \
+                --role "$LAMBDA_ROLE_ARN" \
                 --handler "${handler_path}.main" \
                 --zip-file "fileb://${zip}" \
                 --timeout "$timeout" \
-                --memory-size "$MEMORY" \
+                --memory-size "$memory" \
+                --environment "file:///tmp/lambda-env.json" \
                 --region "$REGION" > /dev/null
             fi
 
+            wait_ready "$function_name"
             echo "  ✓ ${function_name}"
           done
 

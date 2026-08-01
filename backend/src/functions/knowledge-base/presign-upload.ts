@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { requireAdmin } from '../../utils/auth-middleware';
+import { defaultRoleResolver } from '../../utils/role-resolver';
 import { successResponse } from '../../utils/response';
 import { wrapHandler } from '../../utils/error-handler';
 import { validateSchema } from '../../utils/validator';
 import { KNOWLEDGE_BUCKET, KNOWLEDGE_LEVELS, SHS_SUBJECTS } from '../../utils/knowledge-constants';
+const roleResolver = defaultRoleResolver();
 
 const presignSchema = z.object({
   fileName: z.string().min(1, 'File name is required').max(255),
@@ -20,7 +22,7 @@ const presignSchema = z.object({
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'eu-west-1' });
 
 async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const user = requireAdmin(event);
+  const user = await requireAdmin(event, roleResolver);
   const input = validateSchema(presignSchema, JSON.parse(event.body ?? '{}'));
 
   const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');

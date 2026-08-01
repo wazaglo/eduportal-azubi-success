@@ -1,276 +1,88 @@
-# Deployment Guide — Manual AWS Workflow
-
-This document describes the step-by-step process for deploying the AI-Powered Student Support System to AWS without Infrastructure as Code. All resources are created manually via the AWS Management Console.
-
----
+# Deployment Guide
 
 ## 1. Prerequisites
 
-### Required Tools
+- Node.js 20 LTS, npm
+- Git access to the repo (`git@github.com:wazaglo/eduportal-azubi-success.git`)
+- `gh` CLI (for triggering/debugging GitHub Actions)
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Node.js | >= 20.x LTS | Runtime |
-| npm | >= 10.x | Package manager |
-| AWS CLI | >= 2.x | Uploading Lambda zips, verifying resources |
-| Git | >= 2.x | Version control |
+## 2. CI/CD (Deployments happen here, not via the AWS CLI)
 
-Install Node.js via [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm):
+The backend is deployed automatically by GitHub Actions. See `.github/workflows/deploy-backend.yml`:
 
-```bash
-nvm install 20
-nvm use 20
-```
-
-Configure AWS CLI:
-
-```bash
-aws configure
-# Enter your AWS Access Key ID, Secret Access Key, region (us-east-1), and output format (json)
-```
-
-### AWS Account
-
-An AWS account with ability to create the following resources:
-
-- DynamoDB tables
-- Cognito user pools
-- Lambda functions
-- API Gateway REST APIs
-- SQS queues
-- SNS topics
-- SES identities
-- IAM roles and policies
-- CloudWatch log groups, dashboards, and alarms
-- Amplify apps
-- Bedrock model access
-
----
-
-## 2. Provision AWS Resources
-
-Before deploying any code, all AWS infrastructure must be created manually.
-
-Follow the complete guide at **[docs/aws-resources.md](aws-resources.md)** to provision:
-
-1. **DynamoDB** — 8 tables with GSIs (including `ai-student-knowledge`)
-2. **S3** — knowledge base bucket `eduportal-azubi-success-knowledge-base`
-3. **Cognito** — User pool, app client, domain
-4. **Bedrock** — Model access, guardrails (optional)
-5. **SQS** — FIFO queue + DLQ
-6. **SNS** — Alert topic + email subscription
-7. **SES** — Domain/email verification
-8. **IAM** — Lambda execution role with full policy (including S3 knowledge base access)
-9. **Lambda** — 23 functions (created after builds)
-10. **API Gateway** — REST API with Cognito authorizer
-11. **Amplify** — Frontend hosting app
-
-> **Important:** Resource creation order matters — IAM roles and DynamoDB tables must exist before Lambda functions. All resources listed above must be created before proceeding to Step 3.
-
----
-
-## 3. Build Lambda Bundles
+1. **Triggers**: push to `dev` or `main` with `backend/**` changes, or `workflow_dispatch`.
+2. **Job `lint-and-test`**: `npm ci` → `npm run typecheck` → `npm test` (vitest).
+3. **Job `deploy`** (needs lint-and-test):
+   - `npm run build` (esbuild) and `npm run package` (one zip per handler)
+   - Assumes the `eduportal-github-actions-oidc` IAM role via GitHub OIDC (`aws-actions/configure-aws-credentials@v4`) — **no long-lived AWS keys**
+   - Creates or updates all 23 `eduportal-*` Lambda functions from `backend/deployments/**/*.zip`
+   - Sets the Lambda environment (table names, Cognito IDs, `CORS_ORIGIN`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER`, `OPENAI_MODEL`, `OPENAI_API_KEY`) from GitHub secrets — no hardcoded values
+   - `question/ask` is deployed at 120s / 1024MB; all others 30s / 256MB
 
 ```bash
-cd backend
-npm install
-npm run build:all
+# Trigger manually on a branch
+gh workflow run "Deploy Backend" --repo wazaglo/eduportal-azubi-success --ref dev
+
+# Watch a run
+gh run watch <run-id> --repo wazaglo/eduportal-azubi-success --exit-status
 ```
 
-This runs the esbuild bundler, producing one zip file per Lambda function in `backend/deployments/`:
+The OIDC trust policy is scoped to `repo:wazaglo@272252837/eduportal-azubi-success@1315937987` (and the classic slug) on `dev`/`main`. The long-lived `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` secrets have been removed; `ROLE_ARN` is retained for reference only.
 
-```
-backend/deployments/
-├── auth/
-│   ├── register.zip
-│   ├── login.zip
-│   ├── verify-email.zip
-│   ├── reset-password.zip
-│   ├── refresh-token.zip
-│   └── resend-verification-code.zip
-├── chat/
-│   ├── send-message.zip
-│   ├── get-conversations.zip
-│   ├── get-conversation.zip
-│   └── delete-conversation.zip
-├── user/
-│   ├── get-profile.zip
-│   └── update-profile.zip
-├── feedback/
-│   ├── submit-feedback.zip
-│   └── get-feedback.zip
-├── knowledge-base/
-│   ├── presign-upload.zip
-│   ├── complete-upload.zip
-│   ├── list-documents.zip
-│   └── delete-document.zip
-├── admin/
-│   ├── list-users.zip
-│   ├── manage-user.zip
-│   ├── get-analytics.zip
-│   └── system-health.zip
-└── ai/
-    └── process-async.zip
-```
-
----
-
-## 4. Upload Lambda Zip Files
-
-For each of the 23 Lambda functions:
-
-1. Navigate to AWS Console > Lambda > [function name]
-2. Go to the **Code** tab
-3. Click **Upload from** > `.zip file`
-4. Select the appropriate zip from `backend/deployments/{group}/{name}.zip`
-5. Set the **Handler** field to: `index.main`
-6. Click **Save**
-
-**Lambda configuration per function** (refer to aws-resources.md for exact memory/timeout per function):
-
-| Setting | Value |
-|---------|-------|
-| Runtime | Node.js 20.x |
-| Architecture | x86_64 |
-| Handler | `index.main` |
-| Memory | 512 MB (most) / 1024 MB (send-message, process-async) / 256 MB (knowledge-base) |
-| Timeout | 30s (most) / 120s (send-message, process-async) |
-| IAM Role | `ai-student-support-lambda-role` |
-
-**Set environment variables** for each function (all variables from `.env.example`).
-
-For the **process-async** function only, add an SQS trigger:
-1. Go to the function > Configuration > Triggers > Add trigger
-2. Select SQS
-3. Choose the `ai-student-async-processing.fifo` queue
-4. Batch size: 5
-
----
-
-## 5. Configure API Gateway Endpoints
-
-1. Navigate to AWS Console > API Gateway > `ai-student-support-api`
-2. Create resources and methods as described in [aws-resources.md Section 8](aws-resources.md#8-api-gateway)
-3. For each method, configure:
-   - **Integration type**: Lambda Function
-   - **Lambda proxy**: Enabled (checked)
-   - **Lambda function**: Select the corresponding function
-   - **Default timeout**: Use the Lambda timeout value
-4. Enable CORS for each resource
-5. Deploy the API:
-   - Actions > Deploy API
-   - Deployment stage: `v1`
-   - Stage name: `v1`
-   - Note the **Invoke URL**: `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/v1`
-
----
-
-## 6. Configure Cognito Authorizer on API Gateway
-
-1. In API Gateway > Authorizers > Create authorizer
-2. Name: `ai-student-support-cognito-authorizer`
-3. Type: Cognito
-4. Cognito user pool: Select the pool created in Step 2
-5. Token source: `Authorization`
-6. Create
-7. For each protected method (all except auth and health), select the method, go to **Method Request**, and set **Authorization** to the Cognito authorizer
-
----
-
-## 7. Configure Amplify App
-
-1. In AWS Console > Amplify > Create app
-2. Connect to your GitHub repository
-3. App name: `ai-student-support-frontend`
-4. Select the `main` branch for production
-5. Use the following build settings:
-
-```yaml
-version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - npm ci
-    build:
-      commands:
-        - npm run build
-  artifacts:
-    baseDirectory: frontend/dist
-    files:
-      - "**/*"
-  cache:
-    paths:
-      - node_modules/**/*
-```
-
-6. Set environment variables:
+## 3. Environment Variables
 
 | Variable | Value |
 |----------|-------|
-| `PUBLIC_API_URL` | API Gateway Invoke URL (from Step 5) |
+| `TABLE_USERS` … `TABLE_KNOWLEDGE` | `ai-student-users`, `ai-student-questions`, `ai-student-cache`, `ai-student-analytics`, `ai-student-feedback`, `ai-student-knowledge` |
+| `CORS_ORIGIN` | `*` (dev) |
+| `COGNITO_USER_POOL_ID` | e.g., `eu-west-1_58jU3t3eE` |
+| `COGNITO_CLIENT_ID` | e.g., `5u2cc85m997rvttujel00a0ngd` |
+| `KNOWLEDGE_BUCKET` | `eduportal-azubi-success-knowledge-base` |
+| `AI_PROVIDER` | `openai` |
+| `OPENAI_MODEL` | `gpt-4o-mini` |
+| `OPENAI_API_KEY` | GitHub secret, injected by CI/CD |
 
-7. Save and deploy
+Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `OPENAI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
 
----
+## 4. Frontend (Amplify)
 
-## 8. Set Environment Variables
+- AWS Amplify connects to the GitHub repo; `frontend/` builds to `frontend/dist`.
+- Set `PUBLIC_API_URL` to the API Gateway invoke URL per branch.
+- Build settings run `npm ci` then `npm run build` with `baseDirectory: frontend/dist`.
 
-### Lambda Functions (23 total)
-
-Every Lambda function must have the same set of environment variables. In the Lambda console, under Configuration > Environment variables, set all variables from `.env.example`.
-
-Key variables to configure:
-
-| Variable | How to get the value |
-|----------|---------------------|
-| `AWS_REGION` | Your deployment region (e.g., `eu-west-1`) |
-| `TABLE_USERS` through `TABLE_KNOWLEDGE` | DynamoDB table names you created |
-| `COGNITO_USER_POOL_ID` | Cognito console > User pool ID |
-| `COGNITO_CLIENT_ID` | Cognito console > App client ID |
-| `JWT_SECRET` | Generate a random string (e.g., `openssl rand -hex 32`) |
-| `SES_FROM_EMAIL` | The verified SES email address |
-| `SNS_ALERT_TOPIC_ARN` | SNS topic ARN |
-| `ASYNC_QUEUE_URL` | SQS queue URL |
-| `AI_PROVIDER` | `bedrock` |
-| `BEDROCK_GUARDRAIL_ID` | (Optional) Guardrail ID |
-| `KNOWLEDGE_BUCKET` | S3 knowledge base bucket name (`eduportal-azubi-success-knowledge-base`) |
-| `CORS_ORIGIN` | Amplify app URL (e.g., `https://dev.xxxxx.amplifyapp.com`) |
-
-### Amplify App
-
-Set `PUBLIC_API_URL` in the Amplify console environment variables for each branch.
-
----
-
-## 9. Test the Deployment
-
-### Backend Smoke Test
+## 5. Smoke Test
 
 ```bash
-# Health check
-curl https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/v1/admin/health
+API=https://kzhykroge1.execute-api.eu-west-1.amazonaws.com/dev
 
-# Expected response:
-# {"success":true,"data":{"status":"healthy",...}}
+# login -> Cognito tokens; use the ID token for API calls
+LOGIN=$(curl -s -X POST "$API/auth/login" -H 'Content-Type: application/json' \
+  -d '{"email":"e2e1785501265408@azubi.success","password":"Test@12345"}')
+TOKEN=$(echo "$LOGIN" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['tokens']['idToken'])")
+
+# ask (question domain)
+curl -s -X POST "$API/ask" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"question":"What is photosynthesis in plants?"}'
+
+# list / FAQ / delete
+curl -s "$API/question" -H "Authorization: Bearer $TOKEN"
+curl -s "$API/FAQ" -H "Authorization: Bearer $TOKEN"
+curl -s -X DELETE "$API/question/<id>" -H "Authorization: Bearer $TOKEN"
 ```
 
-### Frontend Verification
+## 6. Monitoring (CloudWatch)
 
-1. Open the Amplify app URL in a browser
-2. Register a new account
-3. Verify the email
-4. Log in
-5. Start a chat conversation
-6. Verify the AI responds
+- API Gateway access + execution logs on `dev` (`API-Gateway-Execution-Logs_kzhykroge1/dev`, 14-day retention)
+- Lambda log retention 14 days on all `/aws/lambda/eduportal-*` groups
+- Alarms → SNS `eduportal-alerts`: `eduportal-ask-errors`, `eduportal-ask-duration-p95`, `eduportal-api-5xx-errors`, `eduportal-lambda-throttles`, `eduportal-dynamodb-throttles`
+- Dashboard: `eduportal-monitoring`
 
-### Common Issues
+## Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| Lambda returns 502 | Check CloudWatch logs for the function; verify env vars are set |
-| Cognito auth fails | Verify user pool ID and client ID match exactly |
-| API returns 403 | Check the Cognito authorizer is correctly attached to the method |
-| Amplify build fails | Check build log; ensure `npm ci` succeeds |
-| SQS trigger not firing | Verify the queue's resource policy allows Lambda invocation |
-| DynamoDB query fails | Verify table names match env vars; check GSIs are created |
+| CI fails at "Configure AWS credentials (OIDC)" | Check the OIDC trust policy `sub` matches GitHub's immutable-ID claim (`repo:owner@orgid/repo@repid:*`) and `id-token: write` is set |
+| CI fails at "Deploy all Lambda functions" | `ResourceConflictException` — order code-before-config and retry with a `LastUpdateStatus` poll |
+| Lambda returns 502 | Check CloudWatch logs; verify env vars are set on the function |
+| API returns 401 with `{"message":"Unauthorized"}` | API Gateway authorizer rejected the token — send the Cognito **ID token** (`tokens.idToken`), not the access token |
+| Login returns "Initiate Auth method not supported" | The auth flow is `USER_PASSWORD_AUTH` — it must go through `InitiateAuth`, not `AdminInitiateAuth` |

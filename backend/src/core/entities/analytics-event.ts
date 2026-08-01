@@ -8,9 +8,9 @@ export type AnalyticsEventType =
   | 'cache_miss'
   | 'conversation_created'
   | 'conversation_resolved'
+  | 'question_asked'
   | 'error_occurred'
   | 'search_performed'
-  | 'guardrail_triggered'
   | 'model_switched';
 
 export interface AnalyticsEvent {

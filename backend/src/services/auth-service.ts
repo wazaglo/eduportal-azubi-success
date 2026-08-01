@@ -1,16 +1,17 @@
 import {
   CognitoIdentityProviderClient,
-  SignUpCommand,
   InitiateAuthCommand,
+  AdminInitiateAuthCommand,
+  SignUpCommand,
   ConfirmSignUpCommand,
   ForgotPasswordCommand,
   ConfirmForgotPasswordCommand,
   ResendConfirmationCodeCommand,
   AdminGetUserCommand,
+  type AuthenticationResultType,
 } from '@aws-sdk/client-cognito-identity-provider';
-import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { COGNITO, JWT } from '../utils/constants';
+import { COGNITO } from '../utils/constants';
 import { UserRepository } from '../core/ports/user-repository';
 import { AnalyticsRepository } from '../core/ports/analytics-repository';
 import { AuthenticationError, ConflictError } from '../utils/errors';
@@ -18,7 +19,7 @@ import { logger } from '../utils/logger';
 import { User, CreateUserInput } from '../core/entities/user';
 
 const cognitoClient = new CognitoIdentityProviderClient({
-  region: process.env.AWS_REGION ?? 'us-east-1',
+  region: process.env.AWS_REGION ?? 'eu-west-1',
 });
 
 interface RegisterInput {
@@ -46,7 +47,19 @@ interface TokenResult {
 
 interface AuthResult {
   user: User;
-  tokens: TokenResult;
+  tokens: TokenResult | null;
+}
+
+function toTokenResult(authResult: AuthenticationResultType, existingRefreshToken?: string): TokenResult {
+  if (!authResult.AccessToken) {
+    throw new AuthenticationError('Cognito did not return an access token');
+  }
+  return {
+    accessToken: authResult.AccessToken,
+    refreshToken: authResult.RefreshToken ?? existingRefreshToken,
+    idToken: authResult.IdToken,
+    expiresIn: authResult.ExpiresIn ?? 3600,
+  };
 }
 
 export class AuthService {
@@ -109,7 +122,24 @@ export class AuthService {
       properties: { role: user.role, email: user.email },
     });
 
-    const tokens = await this.generateTokens(user);
+    let tokens: TokenResult | null = null;
+    try {
+      const authCmd = new InitiateAuthCommand({
+        ClientId: COGNITO.CLIENT_ID,
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        AuthParameters: {
+          USERNAME: input.email,
+          PASSWORD: input.password,
+        },
+      });
+      const authResult = await cognitoClient.send(authCmd);
+      tokens = toTokenResult(authResult.AuthenticationResult ?? {});
+    } catch {
+      // New users are usually unconfirmed until they verify their email, so
+      // tokens are only available once the account is confirmed. The client
+      // directs the user through email verification and then login.
+      tokens = null;
+    }
 
     return { user, tokens };
   }
@@ -117,8 +147,8 @@ export class AuthService {
   async login(input: LoginInput): Promise<AuthResult> {
     try {
       const authCmd = new InitiateAuthCommand({
-        AuthFlow: 'USER_PASSWORD_AUTH',
         ClientId: COGNITO.CLIENT_ID,
+        AuthFlow: 'USER_PASSWORD_AUTH',
         AuthParameters: {
           USERNAME: input.email,
           PASSWORD: input.password,
@@ -126,6 +156,7 @@ export class AuthService {
       });
 
       const authResult = await cognitoClient.send(authCmd);
+      const tokens = toTokenResult(authResult.AuthenticationResult ?? {});
 
       const user = await this.userRepo.findByEmail(input.email);
       if (!user) {
@@ -135,8 +166,6 @@ export class AuthService {
       if (!user.isActive) {
         throw new AuthenticationError('Account is deactivated');
       }
-
-      const tokens = await this.generateTokens(user);
 
       await this.analyticsRepo.create({
         eventType: 'user_login',
@@ -214,46 +243,19 @@ export class AuthService {
 
   async refreshToken(refreshTokenValue: string): Promise<TokenResult> {
     try {
-      const decoded = jwt.verify(refreshTokenValue, JWT.SECRET) as { userId?: string; type?: string };
-      if (!decoded.userId || decoded.type !== 'refresh') {
-        throw new Error('Invalid refresh token');
-      }
-
-      const user = await this.userRepo.findById(decoded.userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      return await this.generateTokens(user);
+      const authCmd = new AdminInitiateAuthCommand({
+        UserPoolId: COGNITO.USER_POOL_ID,
+        ClientId: COGNITO.CLIENT_ID,
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        AuthParameters: {
+          REFRESH_TOKEN: refreshTokenValue,
+        },
+      });
+      const authResult = await cognitoClient.send(authCmd);
+      return toTokenResult(authResult.AuthenticationResult ?? {}, refreshTokenValue);
     } catch (error: any) {
       logger.error('Token refresh failed', { error: error.message });
       throw new AuthenticationError('Token refresh failed');
     }
-  }
-
-  private async generateTokens(user: User): Promise<TokenResult> {
-    const accessToken = jwt.sign(
-      {
-        userId: user.userId,
-        email: user.email,
-        role: user.role,
-        level: user.level,
-        organizationId: user.organizationId,
-      },
-      JWT.SECRET,
-      { expiresIn: JWT.ACCESS_TOKEN_EXPIRY, issuer: JWT.ISSUER },
-    );
-
-    const refreshToken = jwt.sign(
-      { userId: user.userId, type: 'refresh' },
-      JWT.SECRET,
-      { expiresIn: JWT.REFRESH_TOKEN_EXPIRY, issuer: JWT.ISSUER },
-    );
-
-    return {
-      accessToken,
-      refreshToken,
-      expiresIn: 3600,
-    };
   }
 }

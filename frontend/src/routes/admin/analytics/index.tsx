@@ -15,12 +15,10 @@ export default component$(() => {
   ];
 
   const topTopics = [
-    { topic: "Calculus", count: 342, trend: "+12%" },
-    { topic: "Physics", count: 284, trend: "+8%" },
-    { topic: "Programming", count: 256, trend: "+15%" },
-    { topic: "Biology", count: 198, trend: "+5%" },
-    { topic: "Literature", count: 167, trend: "+3%" },
-    { topic: "Chemistry", count: 145, trend: "-2%" },
+    { topic: "Core Mathematics", count: 342, trend: "+12%" },
+    { topic: "Integrated Science", count: 284, trend: "+8%" },
+    { topic: "English Language", count: 256, trend: "+15%" },
+    { topic: "Social Studies", count: 198, trend: "+5%" },
   ];
 
   const maxValue = Math.max(...weeklyData.map((d) => Math.max(d.conversations, d.users)));

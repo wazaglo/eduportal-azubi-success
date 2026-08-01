@@ -38,19 +38,17 @@ services:
       AWS_REGION: us-east-1
       AWS_ENDPOINT: http://dynamodb-local:8000
       TABLE_USERS: ai-student-users
-      TABLE_CONVERSATIONS: ai-student-conversations
-      TABLE_MESSAGES: ai-student-messages
+      TABLE_QUESTIONS: ai-student-questions
       TABLE_CACHE: ai-student-cache
       TABLE_FEEDBACK: ai-student-feedback
       TABLE_ANALYTICS: ai-student-analytics
-      TABLE_AUDIT_LOG: ai-student-audit-log
+      TABLE_KNOWLEDGE: ai-student-knowledge
       COGNITO_USER_POOL_ID: local_pool
       COGNITO_CLIENT_ID: local_client
-      JWT_SECRET: dev-secret-change-me
       LOG_LEVEL: debug
-      SES_FROM_EMAIL: dev@student-support.ai
-      KNOWNLEDGE_BASE_ID: ""
-      BEDROCK_GUARDRAIL_ID: ""
+      AI_PROVIDER: openai
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_API_KEY: ""
     volumes:
       - ..:/app
       - /app/node_modules

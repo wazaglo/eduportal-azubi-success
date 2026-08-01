@@ -14,24 +14,24 @@ import {
 } from "lucide-qwik";
 import { StatCard } from "~/components/molecules/StatCard";
 import { Button } from "~/components/atoms/Button";
-import { useChat } from "~/stores/chat-store";
+import { useQuestions } from "~/stores/question-store";
 
 export default component$(() => {
-  const chat = useChat();
-  const recentConversations = chat.state.conversations.slice(0, 3);
+  const questions = useQuestions();
+  const recentQuestions = questions.state.questions.slice(0, 3);
 
   const quickActions = [
     {
       icon: MessageSquareIcon,
-      label: "Start New Chat",
-      description: "Ask AI for homework help",
-      href: "/dashboard/chat",
+      label: "Ask a Question",
+      description: "Get answers from the curriculum",
+      href: "/dashboard/ask",
       color: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
     },
     {
       icon: BookOpenIcon,
       label: "View History",
-      description: "Browse past conversations",
+      description: "Browse past questions and FAQs",
       href: "/dashboard/history",
       color: "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400",
     },
@@ -51,42 +51,42 @@ export default component$(() => {
           <h1 class="text-2xl font-bold text-text-primary">Dashboard</h1>
           <p class="text-text-muted text-sm mt-1">Welcome back! Here's your activity overview.</p>
         </div>
-        <Link href="/dashboard/chat">
+        <Link href="/dashboard/ask">
           <Button variant="primary">
             <WandIcon class="h-4 w-4" />
-            New Chat
+            Ask a Question
           </Button>
         </Link>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Total Conversations"
-          value={chat.state.conversations.length}
+          title="Questions Asked"
+          value={questions.state.total}
           icon={MessageSquareIcon}
           trend="+12%"
           trendUp
           color="primary"
         />
         <StatCard
-          title="Study Hours"
-          value="24"
-          icon={ClockIcon}
+          title="Answered"
+          value={questions.state.questions.filter((q) => q.status === "answered").length}
+          icon={LightbulbIcon}
           trend="+8%"
           trendUp
           color="success"
         />
         <StatCard
-          title="Questions Asked"
-          value={chat.state.conversations.reduce((acc, c) => acc + c.messages.length, 0)}
-          icon={LightbulbIcon}
+          title="Study Hours"
+          value="24"
+          icon={ClockIcon}
           trend="+23%"
           trendUp
           color="warning"
         />
         <StatCard
           title="KB Articles"
-          value="7"
+          value="108"
           icon={DatabaseIcon}
           trend="+2"
           trendUp
@@ -98,7 +98,7 @@ export default component$(() => {
         <div class="lg:col-span-2">
           <div class="rounded-2xl border border-border bg-surface p-6">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-text-primary">Recent Conversations</h2>
+              <h2 class="text-lg font-semibold text-text-primary">Recent Questions</h2>
               <Link
                 href="/dashboard/history"
                 class="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
@@ -108,32 +108,34 @@ export default component$(() => {
               </Link>
             </div>
             <div class="space-y-3">
-              {recentConversations.length === 0 ? (
+              {recentQuestions.length === 0 ? (
                 <div class="text-center py-8">
                   <MessageSquareIcon class="h-8 w-8 text-text-muted mx-auto mb-2" />
-                  <p class="text-sm text-text-muted">No conversations yet</p>
-                  <Link href="/dashboard/chat">
+                  <p class="text-sm text-text-muted">No questions yet</p>
+                  <Link href="/dashboard/ask">
                     <Button variant="primary" size="sm" class="mt-3">
-                      Start your first chat
+                      Ask your first question
                     </Button>
                   </Link>
                 </div>
               ) : (
-                recentConversations.map((conv) => (
+                recentQuestions.map((q) => (
                   <Link
-                    key={conv.id}
-                    href={`/dashboard/chat/${conv.id}`}
+                    key={q.questionId}
+                    href={`/dashboard/ask/${q.questionId}`}
                     class="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-secondary transition-colors group"
                   >
                     <div class="rounded-lg bg-surface-tertiary p-2 group-hover:bg-primary-50 dark:group-hover:bg-primary-950/40 transition-colors">
                       <MessageSquareIcon class="h-4 w-4 text-text-muted group-hover:text-primary-600 transition-colors" />
                     </div>
                     <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-text-primary truncate">{conv.title}</p>
-                      <p class="text-xs text-text-muted truncate">{conv.lastMessage}</p>
+                      <p class="text-sm font-medium text-text-primary truncate">{q.question}</p>
+                      <p class="text-xs text-text-muted truncate">
+                        {q.subject ?? "General"} · {q.status}
+                      </p>
                     </div>
                     <span class="text-xs text-text-muted">
-                      {new Date(conv.updatedAt).toLocaleDateString()}
+                      {new Date(Date.parse(q.createdAt)).toLocaleDateString()}
                     </span>
                   </Link>
                 ))

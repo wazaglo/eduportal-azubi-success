@@ -3,7 +3,7 @@ import { QwikCityProvider, RouterOutlet, ServiceWorkerRegister } from "@builder.
 import { RouterHead } from "./components/router-head";
 import { ThemeProvider } from "./stores/theme-store";
 import { AuthProvider } from "./stores/auth-store";
-import { ChatProvider } from "./stores/chat-store";
+import { QuestionProvider } from "./stores/question-store";
 import "./styles/global.css";
 
 export default component$(() => {
@@ -18,9 +18,9 @@ export default component$(() => {
       <body lang="en" class="min-h-screen bg-surface text-text-primary antialiased">
         <ThemeProvider>
           <AuthProvider>
-            <ChatProvider>
+            <QuestionProvider>
               <RouterOutlet />
-            </ChatProvider>
+            </QuestionProvider>
           </AuthProvider>
         </ThemeProvider>
         <ServiceWorkerRegister />

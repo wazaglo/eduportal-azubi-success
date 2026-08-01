@@ -78,7 +78,7 @@ export default component$(() => {
     },
     {
       name: "Emily Rodriguez",
-      role: "Biology Student",
+      role: "Science Student",
       content: "I love how it adapts to my learning style. The personalized recommendations have made studying so much more efficient.",
       rating: 5,
     },
