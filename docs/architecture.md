@@ -4,43 +4,6 @@
 
 The AI-Powered Student Support System is a cloud-native, serverless application built on AWS. Students ask academic questions and receive answers grounded in the NaCCA Senior High School curriculum knowledge base, with an AI fallback when no curriculum section matches.
 
-## Architecture Diagram
-
-```
-┌────────────────────────────────────────────┐
-│              Students / Users               │
-└────────────────────┬───────────────────────┘
-                     │
-                     ▼
-       ┌───────────────────────────┐
-       │   AWS Amplify (Qwik SPA)  │
-       └───────────┬───────────────┘
-                   │ HTTPS (REST)
-                   ▼
-        ┌───────────────────────────┐
-        │   API Gateway (REST)      │
-        │  Cognito authorizer       │
-        │  validates ID token       │
-        │  + CORS MOCK (OPTIONS)    │
-        └───────────┬───────────────┘
-                    │
-                    ▼
-        ┌───────────────────────────┐
-        │ Lambda (Node.js 20)       │
-        │ 23 handlers, role from    │
-        │ users table by sub claim  │
-        └───────────┬───────────────┘
-                   │
-      ┌────────────┼──────────────┬─────────────┐
-      ▼            ▼              ▼             ▼
-┌──────────┐ ┌───────────┐ ┌───────────┐ ┌────────────┐
-│ DynamoDB │ │ S3        │ │ Amazon    │ │ Amazon     │
-│ 6 tables │ │ knowledge │ │ OpenAI    │ │ Cognito    │
-│          │ │ base      │ │ (AI       │ │ (users)    │
-│          │ │           │ │ fallback) │ │            │
-└──────────┘ └───────────┘ └───────────┘ └────────────┘
-```
-
 ## Data Flow
 
 1. User asks a question via the Qwik frontend → API Gateway → `eduportal-question-ask`.
