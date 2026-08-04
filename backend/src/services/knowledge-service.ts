@@ -127,6 +127,31 @@ export class KnowledgeService {
       };
     }
 
+    // Step 4: No KB match. When AI is enabled, answer any question directly so
+    // students never hit the placeholder; only fall back to the integration
+    // placeholder when no AI provider is configured.
+    if (this.isAiEnabled()) {
+      const aiAnswer = await this.generateWithAI(question);
+      if (aiAnswer) {
+        logger.info('AI answered question with no KB match', { question: question.substring(0, 50) });
+        await this.cacheService.storeCachedResponse({
+          query: question,
+          response: aiAnswer.answer,
+          queryType: queryType as 'academic' | 'administrative' | 'general',
+          modelUsed: aiAnswer.modelUsed,
+          tokensUsed: aiAnswer.tokensUsed,
+          similarityHash: '',
+          source: 'model',
+        });
+        return {
+          answer: aiAnswer.answer,
+          source: 'model',
+          cached: false,
+          modelUsed: aiAnswer.modelUsed,
+        };
+      }
+    }
+
     logger.info('Cache miss and KB miss, returning pending response', { question: question.substring(0, 50) });
     const stubAnswer = '[Model integration pending] This question could not be answered from the knowledge base. AI model support will be added next.';
     return {
