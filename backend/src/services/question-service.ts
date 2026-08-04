@@ -21,7 +21,7 @@ export class QuestionService {
   ) {}
 
   async ask(input: AskInput): Promise<Question> {
-    const answer = await this.knowledgeService.getAnswer(input.question, '', 'academic');
+    const answer = await this.knowledgeService.getAnswer(input.question, '', 'academic', input.userId);
     const subject = input.subject?.trim() || this.knowledgeService.detectSubject(input.question) || null;
 
     const isPending = answer.pending === true;

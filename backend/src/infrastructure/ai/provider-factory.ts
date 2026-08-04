@@ -68,9 +68,9 @@ export class ProviderFactory {
     }
   }
 
-  static getProvider(): AIProvider {
-    if (!this.instance) {
-      this.instance = this.createProvider();
+  static getProvider(analyticsService?: AnalyticsService, userId?: string): AIProvider {
+    if (!this.instance || analyticsService) {
+      this.instance = this.createProvider(undefined, analyticsService, userId);
     }
     return this.instance;
   }

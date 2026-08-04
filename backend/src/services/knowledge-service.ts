@@ -1,6 +1,7 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { CacheService } from './cache-service';
 import { ProviderFactory } from '../infrastructure/ai/provider-factory';
+import type { AnalyticsService } from './analytics-service';
 import { logger } from '../utils/logger';
 import {
   MIN_CONFIDENT_SCORE,
@@ -27,14 +28,16 @@ export class KnowledgeService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly cacheService: CacheService;
+  private readonly analyticsService?: AnalyticsService;
 
-  constructor(cacheService: CacheService) {
+  constructor(cacheService: CacheService, analyticsService?: AnalyticsService) {
     this.s3 = new S3Client({ region: process.env.AWS_REGION ?? 'eu-west-1' });
     this.bucket = process.env.KNOWLEDGE_BUCKET ?? '';
     this.cacheService = cacheService;
+    this.analyticsService = analyticsService;
   }
 
-  async getAnswer(question: string, level: string, queryType: string): Promise<AnswerResult> {
+  async getAnswer(question: string, level: string, queryType: string, userId?: string): Promise<AnswerResult> {
     // Step 1: Check DynamoDB cache for a previously cached answer
     const cached = await this.cacheService.findCachedResponse(question, queryType);
     if (cached) {
@@ -80,7 +83,7 @@ export class KnowledgeService {
     // The closest curriculum excerpt is passed as context so the answer stays
     // grounded in the curriculum instead of returning a raw content dump.
     if (kb && kb.note && this.isAiEnabled()) {
-      const aiAnswer = await this.generateWithAI(question, kb.answer);
+      const aiAnswer = await this.generateWithAI(question, kb.answer, userId);
       if (aiAnswer) {
         logger.info('AI-refined weak KB match for question', { question: question.substring(0, 50) });
         await this.cacheService.storeCachedResponse({
@@ -131,7 +134,7 @@ export class KnowledgeService {
     // students never hit the placeholder; only fall back to the integration
     // placeholder when no AI provider is configured.
     if (this.isAiEnabled()) {
-      const aiAnswer = await this.generateWithAI(question);
+      const aiAnswer = await this.generateWithAI(question, undefined, userId);
       if (aiAnswer) {
         logger.info('AI answered question with no KB match', { question: question.substring(0, 50) });
         await this.cacheService.storeCachedResponse({
@@ -170,9 +173,9 @@ export class KnowledgeService {
     return false;
   }
 
-  private async generateWithAI(question: string, curriculumContext?: string): Promise<{ answer: string; modelUsed: string; tokensUsed: number } | null> {
+  private async generateWithAI(question: string, curriculumContext?: string, userId?: string): Promise<{ answer: string; modelUsed: string; tokensUsed: number } | null> {
     try {
-      const provider = ProviderFactory.getProvider();
+      const provider = ProviderFactory.getProvider(this.analyticsService, userId);
       const prompt = curriculumContext
         ? `Answer the student's question using the curriculum material below as the basis. Keep the answer clear, concise, and directly answer the question. If the material does not cover the question, say so plainly.\n\nStudent question: ${question}\n\nRelevant curriculum material:\n${curriculumContext}`
         : question;

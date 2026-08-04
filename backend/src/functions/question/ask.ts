@@ -56,8 +56,8 @@ function getDefaultDeps(): AskHandlerDeps {
     const questionRepo = new DynamoQuestionRepository();
     const cacheRepo = new DynamoCacheRepository();
     const cacheService = new CacheService(cacheRepo);
-    const knowledgeService = new KnowledgeService(cacheService);
     const analyticsService = new AnalyticsService(new DynamoAnalyticsRepository());
+    const knowledgeService = new KnowledgeService(cacheService, analyticsService);
     defaultDeps = {
       questionService: new QuestionService(questionRepo, knowledgeService, analyticsService),
       roleResolver: defaultRoleResolver(),
