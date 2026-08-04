@@ -49,8 +49,22 @@ export class ConflictError extends AppError {
 }
 
 export class RateLimitError extends AppError {
-  constructor(message = 'Too many requests') {
-    super(429, 'RATE_LIMIT', message);
+  constructor(message = 'Too many requests', details?: Record<string, unknown>) {
+    super(429, 'RATE_LIMIT', message, details);
     this.name = 'RateLimitError';
+  }
+}
+
+export interface DailyLimitDetails {
+  limit: number;
+  remaining: number;
+  resetDate: string;
+  [key: string]: unknown;
+}
+
+export class DailyQueryLimitError extends RateLimitError {
+  constructor(details: DailyLimitDetails, message = 'Daily AI query limit reached') {
+    super(message, details);
+    this.name = 'DailyQueryLimitError';
   }
 }

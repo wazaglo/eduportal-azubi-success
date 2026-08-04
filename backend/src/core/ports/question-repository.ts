@@ -7,4 +7,5 @@ export interface QuestionRepository {
   findAll(limit: number): Promise<Question[]>;
   count(): Promise<number>;
   delete(questionId: string): Promise<void>;
+  countAiGeneratedToday(userId: string, day: string): Promise<number>;
 }

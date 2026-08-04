@@ -3,8 +3,8 @@ import { QuestionRepository } from '../core/ports/question-repository';
 import type { KnowledgeService } from './knowledge-service';
 import type { AnalyticsService } from './analytics-service';
 import { Question, FaqEntry } from '../core/entities/question';
-import { NotFoundError, AuthorizationError } from '../utils/errors';
-import { ROLES } from '../utils/constants';
+import { NotFoundError, AuthorizationError, DailyQueryLimitError } from '../utils/errors';
+import { ROLES, getDailyAiQueryLimit } from '../utils/constants';
 import { logger } from '../utils/logger';
 
 interface AskInput {
@@ -25,6 +25,19 @@ export class QuestionService {
     const subject = input.subject?.trim() || this.knowledgeService.detectSubject(input.question) || null;
 
     const isPending = answer.pending === true;
+    const isAi = answer.source === 'model';
+
+    if (isAi) {
+      const today = new Date().toISOString().slice(0, 10);
+      const limit = getDailyAiQueryLimit();
+      const used = await this.questionRepo.countAiGeneratedToday(input.userId, today);
+      if (used >= limit) {
+        const resetDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        logger.warn('Daily AI query limit reached', { userId: input.userId, used, limit, day: today });
+        throw new DailyQueryLimitError({ limit, remaining: 0, resetDate });
+      }
+    }
+
     const question: Question = {
       questionId: uuidv4(),
       userId: input.userId,

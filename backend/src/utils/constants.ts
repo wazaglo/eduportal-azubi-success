@@ -61,3 +61,9 @@ export const AI_MODELS = {
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const SIMILARITY_THRESHOLD = 0.85;
+
+export function getDailyAiQueryLimit(): number {
+  const parsed = Number(process.env.AI_DAILY_LIMIT);
+  if (Number.isNaN(parsed) || parsed <= 0) return 10;
+  return Math.floor(parsed);
+}

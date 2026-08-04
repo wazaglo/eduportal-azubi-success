@@ -98,4 +98,22 @@ export class DynamoQuestionRepository implements QuestionRepository {
       Key: { questionId },
     }));
   }
+
+  async countAiGeneratedToday(userId: string, day: string): Promise<number> {
+    const result = await this.db.send(new QueryCommand({
+      TableName: this.tableName,
+      IndexName: 'UserQuestionsIndex',
+      KeyConditionExpression: 'userId = :userId AND begins_with(createdAt, :day)',
+      FilterExpression: '#source = :ai',
+      ExpressionAttributeNames: { '#source': 'source' },
+      ExpressionAttributeValues: {
+        ':userId': userId,
+        ':day': day,
+        ':ai': 'ai',
+      },
+      Select: 'COUNT',
+    }));
+
+    return result.Count ?? 0;
+  }
 }

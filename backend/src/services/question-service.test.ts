@@ -4,7 +4,7 @@ import { QuestionRepository } from '../core/ports/question-repository';
 import type { KnowledgeService } from './knowledge-service';
 import type { AnalyticsService } from './analytics-service';
 import { Question } from '../core/entities/question';
-import { NotFoundError, AuthorizationError } from '../utils/errors';
+import { NotFoundError, AuthorizationError, DailyQueryLimitError } from '../utils/errors';
 
 function makeQuestion(overrides: Partial<Question> = {}): Question {
   return {
@@ -34,6 +34,7 @@ function buildService(overrides?: {
     findAll: vi.fn(async () => []),
     count: vi.fn(async () => 0),
     delete: vi.fn(async () => {}),
+    countAiGeneratedToday: vi.fn(async () => 0),
     ...(overrides?.repo ?? {}),
   } as unknown as QuestionRepository;
 
@@ -106,6 +107,48 @@ describe('QuestionService.ask', () => {
     const question = await service.ask({ userId: 'user-1', question: 'equation of a line through two points' });
     expect(question.source).toBe('ai');
     expect(question.status).toBe('answered');
+  });
+
+  it('allows AI answers up to the daily limit', async () => {
+    const { service, repo } = buildService({
+      knowledge: {
+        getAnswer: vi.fn(async () => ({
+          answer: '...',
+          source: 'model',
+          cached: false,
+        })),
+      },
+      repo: { countAiGeneratedToday: vi.fn(async () => 9) },
+    });
+
+    const question = await service.ask({ userId: 'user-1', question: 'still under the cap' });
+    expect(question.source).toBe('ai');
+    expect(repo.countAiGeneratedToday).toHaveBeenCalledWith('user-1', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it('rejects the 11th AI answer with a DailyQueryLimitError', async () => {
+    const { service } = buildService({
+      knowledge: {
+        getAnswer: vi.fn(async () => ({
+          answer: '...',
+          source: 'model',
+          cached: false,
+        })),
+      },
+      repo: { countAiGeneratedToday: vi.fn(async () => 10) },
+    });
+
+    await expect(service.ask({ userId: 'user-1', question: 'one too many' })).rejects.toBeInstanceOf(DailyQueryLimitError);
+  });
+
+  it('does not count knowledge-base answers toward the daily AI limit', async () => {
+    const { service, repo } = buildService({
+      repo: { countAiGeneratedToday: vi.fn(async () => 0) },
+    });
+
+    const question = await service.ask({ userId: 'user-1', question: 'what is a quadratic equation?' });
+    expect(question.source).toBe('knowledge_base');
+    expect(repo.countAiGeneratedToday).not.toHaveBeenCalled();
   });
 
   it('prefers an explicit subject from the caller', async () => {

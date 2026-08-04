@@ -96,6 +96,7 @@ jobs:
             "KNOWLEDGE_BUCKET": "${{ secrets.KNOWLEDGE_BUCKET }}",
             "AI_PROVIDER": "bedrock",
             "AI_MODEL_CHAIN": "${{ secrets.AI_MODEL_CHAIN }}",
+            "AI_DAILY_LIMIT": "10",
             "GEMINI_API_KEY": "${{ secrets.GEMINI_API_KEY }}"
           }}
           JSON

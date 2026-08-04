@@ -23,12 +23,14 @@ export interface Question {
   answer: string;
   subject: string | null;
   source: "knowledge_base" | "ai" | "pending";
-  status: "answered" | "pending";
+  status: "answered" | "pending" | "limit_reached";
   documentTitle?: string | null;
   modelUsed?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
+
+export type QuestionStatus = Question["status"];
 
 export interface FaqEntry {
   question: string;
@@ -45,6 +47,7 @@ export interface QuestionState {
   isLoading: boolean;
   searchQuery: string;
   faq: FaqEntry[];
+  limitReached: boolean;
 }
 
 export interface QuestionStore {
@@ -107,6 +110,7 @@ export const QuestionProvider = component$(() => {
     isLoading: false,
     searchQuery: "",
     faq: [],
+    limitReached: false,
   });
 
   const store: QuestionStore = {
@@ -118,23 +122,36 @@ export const QuestionProvider = component$(() => {
           question: content,
           ...(subject ? { subject } : {}),
         });
-        const question = mapQuestion(res.data);
-        state.activeQuestion = question;
-        state.questions = [question, ...state.questions.filter((q) => q.questionId !== question.questionId)];
-        state.total += 1;
-      } catch {
-        state.activeQuestion = {
-          questionId: "",
-          question: content,
-          answer: "Sorry, I couldn't reach the assistant right now. Please try again.",
-          subject: null,
-          source: "pending",
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        };
-      } finally {
-        state.isAsking = false;
-      }
+         const question = mapQuestion(res.data);
+         state.activeQuestion = question;
+         state.questions = [question, ...state.questions.filter((q) => q.questionId !== question.questionId)];
+         state.total += 1;
+       } catch (e: any) {
+         const details = e?.response?.data?.error?.details;
+         if (details?.limitExceeded || e?.response?.status === 429) {
+           state.limitReached = true;
+           state.activeQuestion = {
+             questionId: "",
+             question: content,
+             answer: `You've used today's allowance of AI answers. Please come back tomorrow to keep chatting with the study assistant.`,
+             subject: null,
+             source: "ai",
+             status: "limit_reached" as QuestionStatus,
+             modelUsed: null,
+             createdAt: new Date().toISOString(),
+           };
+         } else {
+           state.activeQuestion = {
+             questionId: "",
+             question: content,
+             answer: "Sorry, I couldn't reach the assistant right now. Please try again.",
+             subject: null,
+             source: "pending",
+             status: "pending",
+             createdAt: new Date().toISOString(),
+           };
+         }
+       }
     }),
     loadQuestions: $<() => Promise<void>>(async () => {
       state.isLoading = true;

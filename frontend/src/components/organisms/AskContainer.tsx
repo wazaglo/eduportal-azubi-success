@@ -62,7 +62,10 @@ export const AskContainer = component$<AskContainerProps>(({ class: className })
             )}
           </div>
 
-          <QuestionInput onSend$={(msg) => questions.ask(msg)} disabled={questions.state.isAsking} />
+          <QuestionInput
+            onSend$={(msg) => questions.ask(msg)}
+            disabled={questions.state.isAsking || questions.state.limitReached}
+          />
         </>
       ) : (
         <div class="flex flex-col items-center justify-center h-full text-center p-8">
