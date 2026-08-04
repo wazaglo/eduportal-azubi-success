@@ -94,9 +94,9 @@ jobs:
             "COGNITO_CLIENT_ID": "${{ secrets.COGNITO_CLIENT_ID }}",
             "COGNITO_USER_POOL_ID": "${{ secrets.COGNITO_USER_POOL_ID }}",
             "KNOWLEDGE_BUCKET": "${{ secrets.KNOWLEDGE_BUCKET }}",
-            "AI_PROVIDER": "openai",
-            "OPENAI_MODEL": "gpt-4o-mini",
-            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}"
+            "AI_PROVIDER": "bedrock",
+            "AI_MODEL_CHAIN": "${{ secrets.AI_MODEL_CHAIN }}",
+            "GEMINI_API_KEY": "${{ secrets.GEMINI_API_KEY }}"
           }}
           JSON
 

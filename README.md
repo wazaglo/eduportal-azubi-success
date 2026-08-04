@@ -72,17 +72,23 @@ Full endpoint reference (methods, request/response, lambdas): [docs/api.md](docs
 
 ## AI Integration
 
-When the knowledge base cannot answer confidently, the backend falls back to OpenAI to refine a clean answer from the closest curriculum excerpt. The provider is `backend/src/infrastructure/ai/openai-provider.ts` (default via `AI_PROVIDER=openai`) and is **already wired into the answer flow**. Until an API key is set, unanswered questions return a `"[Model integration pending] ..."` placeholder.
+When the knowledge base cannot answer confidently, the backend falls back to an AI provider chain to refine a clean answer from the closest curriculum excerpt. With `AI_PROVIDER=bedrock`, `ProviderFactory` builds a `FailoverProvider` that tries:
+1. Amazon Nova **Micro** (`amazon.nova-micro-v1:0`) — cheap, answers most queries
+2. Amazon Nova **Lite** (`amazon.nova-lite-v1:0`)
+3. Google **Gemini Flash** (free Google API, `GEMINI_API_KEY`)
+4. Amazon Nova **Pro** (`amazon.nova-pro-v1:0`) — most capable
+
+Bedrock is invoked over the Converse API using the Lambda role's IAM credentials (no API key); Gemini is a free HTTPS API. Each model failure (error, throttle, unavailability, or empty answer) advances to the next. Each answered question records `modelUsed` and logs `ai_response`/`model_switched` analytics events.
 
 To enable it:
-
-1. Create an OpenAI API key at platform.openai.com. Never commit it.
-2. Store it as a GitHub secret:
+1. Enable model access for Nova Micro/Lite/Pro in the Bedrock console (eu-west-1).
+2. Get a free Gemini API key at Google AI Studio; never commit it.
+3. Store as GitHub secrets:
    ```bash
-   gh secret set OPENAI_API_KEY -R wazaglo/eduportal-azubi-success
+   gh secret set BEDROCK_MODEL_IDS -R wazaglo/eduportal-azubi-success
+   gh secret set GEMINI_API_KEY -R wazaglo/eduportal-azubi-success
    ```
-   The deploy workflow injects `AI_PROVIDER=openai`, `OPENAI_MODEL=gpt-4o-mini`, and `OPENAI_API_KEY` into every Lambda. Without a secret, the variable is empty and the fallback is skipped.
-3. `OPENAI_MODEL` defaults to `gpt-4o-mini`; `gpt-4o` is used automatically for questions that request reasoning.
+   The deploy workflow injects `AI_PROVIDER=bedrock`, `BEDROCK_MODEL_IDS`, and `GEMINI_API_KEY` into every Lambda.
 
 No code or frontend changes are needed.
 

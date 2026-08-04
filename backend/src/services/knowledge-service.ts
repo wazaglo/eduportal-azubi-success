@@ -20,6 +20,7 @@ export interface AnswerResult {
   note?: string;
   cached: boolean;
   pending?: boolean;
+  modelUsed?: string;
 }
 
 export class KnowledgeService {
@@ -75,10 +76,10 @@ export class KnowledgeService {
       };
     }
 
-    // Step 3: Weak/no KB match -> refine with the AI provider when a key exists.
+    // Step 3: Weak/no KB match -> refine with the AI provider when available.
     // The closest curriculum excerpt is passed as context so the answer stays
     // grounded in the curriculum instead of returning a raw content dump.
-    if (kb && kb.note && process.env.OPENAI_API_KEY) {
+    if (kb && kb.note && this.isAiEnabled()) {
       const aiAnswer = await this.generateWithAI(question, kb.answer);
       if (aiAnswer) {
         logger.info('AI-refined weak KB match for question', { question: question.substring(0, 50) });
@@ -97,6 +98,7 @@ export class KnowledgeService {
           source: 'model',
           documentTitle: kb.documentTitle,
           cached: false,
+          modelUsed: aiAnswer.modelUsed,
         };
       }
     }
@@ -133,6 +135,14 @@ export class KnowledgeService {
       pending: true,
       cached: false,
     };
+  }
+
+  private isAiEnabled(): boolean {
+    const provider = process.env.AI_PROVIDER ?? 'openai';
+    if (provider === 'bedrock') return true;
+    if (provider === 'gemini') return !!process.env.GEMINI_API_KEY;
+    if (provider === 'openai') return !!process.env.OPENAI_API_KEY;
+    return false;
   }
 
   private async generateWithAI(question: string, curriculumContext?: string): Promise<{ answer: string; modelUsed: string; tokensUsed: number } | null> {

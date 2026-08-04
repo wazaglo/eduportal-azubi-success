@@ -16,7 +16,7 @@ The backend is deployed automatically by GitHub Actions. See `.github/workflows/
    - `npm run build` (esbuild) and `npm run package` (one zip per handler)
    - Assumes the `eduportal-github-actions-oidc` IAM role via GitHub OIDC (`aws-actions/configure-aws-credentials@v4`) — **no long-lived AWS keys**
    - Creates or updates all 23 `eduportal-*` Lambda functions from `backend/deployments/**/*.zip`
-   - Sets the Lambda environment (table names, Cognito IDs, `CORS_ORIGIN`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER`, `OPENAI_MODEL`, `OPENAI_API_KEY`) from GitHub secrets — no hardcoded values
+   - Sets the Lambda environment (table names, Cognito IDs, `CORS_ORIGIN`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER`, `BEDROCK_MODEL_IDS`, `GEMINI_API_KEY`) from GitHub secrets — no hardcoded values
    - `question/ask` is deployed at 120s / 1024MB; all others 30s / 256MB
 
 ```bash
@@ -38,11 +38,11 @@ The OIDC trust policy is scoped to `repo:wazaglo@272252837/eduportal-azubi-succe
 | `COGNITO_USER_POOL_ID` | e.g., `eu-west-1_58jU3t3eE` |
 | `COGNITO_CLIENT_ID` | e.g., `5u2cc85m997rvttujel00a0ngd` |
 | `KNOWLEDGE_BUCKET` | `eduportal-azubi-success-knowledge-base` |
-| `AI_PROVIDER` | `openai` |
-| `OPENAI_MODEL` | `gpt-4o-mini` |
-| `OPENAI_API_KEY` | GitHub secret, injected by CI/CD |
+| `AI_PROVIDER` | `bedrock` |
+| `BEDROCK_MODEL_IDS` | `amazon.nova-micro-v1:0,amazon.nova-lite-v1:0,amazon.nova-pro-v1:0` |
+| `GEMINI_API_KEY` | GitHub secret (free Google API), injected by CI/CD |
 
-Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `OPENAI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
+Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `BEDROCK_MODEL_IDS`, `GEMINI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
 
 ## 4. Frontend (Amplify)
 

@@ -25,6 +25,7 @@ export interface Question {
   source: "knowledge_base" | "ai" | "pending";
   status: "answered" | "pending";
   documentTitle?: string | null;
+  modelUsed?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -71,6 +72,7 @@ interface BackendQuestion {
   source: "knowledge_base" | "ai" | "pending";
   status: "answered" | "pending";
   documentTitle?: string | null;
+  modelUsed?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -90,6 +92,7 @@ function mapQuestion(q: BackendQuestion): Question {
     source: q.source,
     status: q.status,
     documentTitle: q.documentTitle ?? null,
+    modelUsed: q.modelUsed ?? null,
     createdAt: q.createdAt,
     updatedAt: q.updatedAt,
   };

@@ -23,7 +23,9 @@ export const AskContainer = component$<AskContainerProps>(({ class: className })
   const active = questions.state.activeQuestion;
   const sources = active?.documentTitle
     ? [{ title: active.documentTitle, snippet: `Source: ${active.source}` }]
-    : undefined;
+    : active?.modelUsed
+      ? [{ title: `Answered by ${active.modelUsed}`, snippet: "AI model" }]
+      : undefined;
 
   return (
     <div class={[`flex flex-col h-full`, className].join(" ")}>

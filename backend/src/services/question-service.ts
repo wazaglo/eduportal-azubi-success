@@ -35,6 +35,7 @@ export class QuestionService {
       source: isPending ? 'pending' : (answer.source === 'model' ? 'ai' : 'knowledge_base'),
       status: isPending ? 'pending' : 'answered',
       documentTitle: answer.documentTitle,
+      modelUsed: answer.modelUsed ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -45,7 +46,12 @@ export class QuestionService {
       await this.analyticsService.trackEvent({
         eventType: 'question_asked',
         userId: input.userId,
-        properties: { questionId: question.questionId, subject },
+        properties: {
+          questionId: question.questionId,
+          subject,
+          source: question.source,
+          ...(answer.modelUsed ? { modelUsed: answer.modelUsed } : {}),
+        },
       });
     }
 

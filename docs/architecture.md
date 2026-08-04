@@ -13,7 +13,7 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
    - `detectSubject` narrows the search to the 4 supported subjects
    - `knowledge-retrieval.ts` tokenizes and scores candidate documents, skipping NaCCA boilerplate sections
    - the best excerpt is returned as a grounded answer, or the answer is marked as a weak match
-5. If no document matches well, the service falls back to OpenAI for a generated answer.
+5. If no document matches well, the service falls back to an AI provider (Bedrock Nova chain, then Gemini) for a generated answer.
 6. The question and answer are persisted to `ai-student-questions`, an analytics event is recorded, and the answer is cached.
 
 ## Component Descriptions
@@ -48,10 +48,15 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 - Key layout: `knowledge/{Subject}/{Strand}/{Subject}-SHS{n}-{...}.txt` — 108 parsed curriculum documents plus 4 source PDFs in `knowledge/sources/`
 - Retrieval is subject-scoped with boilerplate-aware scoring; see `backend/src/services/knowledge-retrieval.ts`
 
-### OpenAI Integration
+### AI Integration (Amazon Bedrock + Gemini)
 - Abstract `AIProvider` interface decouples business logic from the AI service
-- `OpenAIProvider` (`backend/src/infrastructure/ai/openai-provider.ts`) implements the interface; `ProviderFactory` selects the provider (`AI_PROVIDER=openai`, the default)
-- Called over HTTPS with the `OPENAI_API_KEY` (no IAM needed); used as the fallback in `question/ask` when the knowledge base cannot answer confidently
+- `ProviderFactory` (`backend/src/infrastructure/ai/provider-factory.ts`) selects the provider via `AI_PROVIDER=bedrock` and builds a `FailoverProvider` chain:
+  1. Amazon Nova **Micro** (`amazon.nova-micro-v1:0`)
+  2. Amazon Nova **Lite** (`amazon.nova-lite-v1:0`)
+  3. Google **Gemini Flash** (free Google API, `GEMINI_API_KEY`)
+  4. Amazon Nova **Pro** (`amazon.nova-pro-v1:0`)
+- `BedrockProvider` calls the Bedrock **Converse API** with credentials from the Lambda role (no API key); `GeminiProvider` calls the free Google API over HTTPS; `FailoverProvider` advances to the next model on errors, throttling, unavailability, or empty answers
+- Used as the fallback in `question/ask` when the knowledge base cannot answer confidently; each answered question records `modelUsed` and emits `ai_response`/`model_switched` analytics events for the admin model-usage report
 
 ### Observability
 - Structured JSON logging from all Lambda handlers to CloudWatch Logs
@@ -81,6 +86,6 @@ Frontend deploys via AWS Amplify; see `docs/deployment.md`.
 | Frontend Framework | Qwik City | Resumability minimizes JS, SSR for SEO |
 | Backend Runtime | Node.js 20 (Lambda) | Shared TypeScript with the frontend |
 | Database | DynamoDB (on-demand) | Serverless, single-digit ms latency, scales automatically |
-| AI Platform | OpenAI | Simple HTTPS API + API key; no IAM required |
+| AI Platform | Amazon Bedrock Nova (Micro/Lite/Pro) + Google Gemini Flash | Managed FM chain with automatic failover; Bedrock uses IAM (no key), Gemini is free-tier |
 | Auth | Amazon Cognito + API Gateway authorizer | Managed users; tokens validated at the gateway, roles from the users table |
 | Deployment | GitHub Actions (OIDC) + AWS Amplify | Git-based CI/CD, no long-lived credentials |

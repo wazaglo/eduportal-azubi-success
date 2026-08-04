@@ -12,6 +12,7 @@ interface AnalyticsReport {
   totalConversations: number;
   totalMessages: number;
   cacheHitRate?: number;
+  modelUsage?: Record<string, number>;
   feedbackStats?: {
     averageRating: number;
     totalFeedback: number;
@@ -52,11 +53,22 @@ export class AnalyticsService {
     return this.analyticsRepo.getAverageResponseTime(startDate, endDate);
   }
 
+  async getModelUsage(startDate: string, endDate: string): Promise<Record<string, number>> {
+    const events = await this.analyticsRepo.findByEventType('ai_response', startDate, endDate);
+    const usage: Record<string, number> = {};
+    for (const event of events) {
+      const model = (event.properties?.model as string) ?? 'unknown';
+      usage[model] = (usage[model] ?? 0) + 1;
+    }
+    return usage;
+  }
+
   async generateReport(startDate: string, endDate: string): Promise<AnalyticsReport> {
-    const [eventBreakdown, dailyActiveUsers, avgResponseTime] = await Promise.all([
+    const [eventBreakdown, dailyActiveUsers, avgResponseTime, modelUsage] = await Promise.all([
       this.getEventCountByType(startDate, endDate),
       this.getDailyActiveUsers(startDate, endDate),
       this.getAverageResponseTime(startDate, endDate),
+      this.getModelUsage(startDate, endDate),
     ]);
 
     const totalEvents = Object.values(eventBreakdown).reduce((sum, count) => sum + count, 0);
@@ -70,6 +82,7 @@ export class AnalyticsService {
       totalConversations: eventBreakdown['conversation_created'] ?? 0,
       totalMessages: (eventBreakdown['message_sent'] ?? 0) + (eventBreakdown['ai_response'] ?? 0),
       cacheHitRate: this.calculateCacheHitRate(eventBreakdown),
+      modelUsage,
     };
   }
 

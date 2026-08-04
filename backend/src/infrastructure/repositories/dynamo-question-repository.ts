@@ -26,6 +26,7 @@ export class DynamoQuestionRepository implements QuestionRepository {
       source: input.source,
       status: input.status ?? 'answered',
       documentTitle: input.documentTitle,
+      modelUsed: input.modelUsed ?? null,
       createdAt: now,
       updatedAt: now,
     };

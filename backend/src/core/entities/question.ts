@@ -11,6 +11,7 @@ export interface Question {
   source: QuestionSource;
   status: QuestionStatus;
   documentTitle?: string | null;
+  modelUsed?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +26,7 @@ export interface CreateQuestionInput {
   source: QuestionSource;
   status?: QuestionStatus;
   documentTitle?: string | null;
+  modelUsed?: string | null;
 }
 
 export interface FaqEntry {
