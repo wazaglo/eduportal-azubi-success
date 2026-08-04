@@ -43,6 +43,7 @@ export function createHandler(deps: AskHandlerDeps) {
       source: question.source,
       status: question.status,
       documentTitle: question.documentTitle,
+      modelUsed: question.modelUsed,
       createdAt: question.createdAt,
     }, 201);
   });
