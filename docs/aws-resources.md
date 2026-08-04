@@ -72,7 +72,7 @@ All functions use runtime `nodejs20.x`, x86_64, handler `{source-path}.main` (e.
 
 ### Environment Variables (set on every function)
 
-`TABLE_USERS=ai-student-users`, `TABLE_QUESTIONS=ai-student-questions`, `TABLE_CACHE=ai-student-cache`, `TABLE_ANALYTICS=ai-student-analytics`, `TABLE_FEEDBACK=ai-student-feedback`, `TABLE_KNOWLEDGE=ai-student-knowledge`, `CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER=bedrock`, `BEDROCK_MODEL_IDS`, `GEMINI_API_KEY`.
+`TABLE_USERS=ai-student-users`, `TABLE_QUESTIONS=ai-student-questions`, `TABLE_CACHE=ai-student-cache`, `TABLE_ANALYTICS=ai-student-analytics`, `TABLE_FEEDBACK=ai-student-feedback`, `TABLE_KNOWLEDGE=ai-student-knowledge`, `CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `AI_PROVIDER=bedrock`, `AI_MODEL_CHAIN`, `AI_DAILY_LIMIT`, `GEMINI_API_KEY`.
 
 ## 3. DynamoDB Tables (on-demand)
 

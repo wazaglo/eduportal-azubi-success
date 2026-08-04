@@ -39,10 +39,11 @@ The OIDC trust policy is scoped to `repo:wazaglo@272252837/eduportal-azubi-succe
 | `COGNITO_CLIENT_ID` | e.g., `5u2cc85m997rvttujel00a0ngd` |
 | `KNOWLEDGE_BUCKET` | `eduportal-azubi-success-knowledge-base` |
 | `AI_PROVIDER` | `bedrock` |
-| `BEDROCK_MODEL_IDS` | `amazon.nova-micro-v1:0,amazon.nova-lite-v1:0,amazon.nova-pro-v1:0` |
+| `AI_MODEL_CHAIN` | `eu.amazon.nova-micro-v1:0,eu.amazon.nova-lite-v1:0,gemini,eu.amazon.nova-pro-v1:0` |
+| `AI_DAILY_LIMIT` | `10` |
 | `GEMINI_API_KEY` | GitHub secret (free Google API), injected by CI/CD |
 
-Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `BEDROCK_MODEL_IDS`, `GEMINI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
+Values are set as GitHub secrets (`CORS_ORIGIN`, `COGNITO_CLIENT_ID`, `COGNITO_USER_POOL_ID`, `KNOWLEDGE_BUCKET`, `AI_MODEL_CHAIN`, `AI_DAILY_LIMIT`, `GEMINI_API_KEY`) and injected into the Lambda environment by the deploy workflow — no hardcoded values in the workflow.
 
 ## 4. Frontend (Amplify)
 

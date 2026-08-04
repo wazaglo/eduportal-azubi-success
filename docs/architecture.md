@@ -50,13 +50,13 @@ The AI-Powered Student Support System is a cloud-native, serverless application 
 
 ### AI Integration (Amazon Bedrock + Gemini)
 - Abstract `AIProvider` interface decouples business logic from the AI service
-- `ProviderFactory` (`backend/src/infrastructure/ai/provider-factory.ts`) selects the provider via `AI_PROVIDER=bedrock` and builds a `FailoverProvider` chain:
-  1. Amazon Nova **Micro** (`amazon.nova-micro-v1:0`)
-  2. Amazon Nova **Lite** (`amazon.nova-lite-v1:0`)
-  3. Google **Gemini Flash** (free Google API, `GEMINI_API_KEY`)
-  4. Amazon Nova **Pro** (`amazon.nova-pro-v1:0`)
+ - `ProviderFactory` (`backend/src/infrastructure/ai/provider-factory.ts`) selects the provider via `AI_PROVIDER=bedrock` and builds a `FailoverProvider` chain (ordered by the `AI_MODEL_CHAIN` env var):
+   1. Amazon Nova **Micro** (`eu.amazon.nova-micro-v1:0` — EU inference profile)
+   2. Amazon Nova **Lite** (`eu.amazon.nova-lite-v1:0`)
+   3. Google **Gemini Flash** (free Google API, `GEMINI_API_KEY`)
+   4. Amazon Nova **Pro** (`eu.amazon.nova-pro-v1:0`)
 - `BedrockProvider` calls the Bedrock **Converse API** with credentials from the Lambda role (no API key); `GeminiProvider` calls the free Google API over HTTPS; `FailoverProvider` advances to the next model on errors, throttling, unavailability, or empty answers
-- Used as the fallback in `question/ask` when the knowledge base cannot answer confidently; each answered question records `modelUsed` and emits `ai_response`/`model_switched` analytics events for the admin model-usage report
+- Used as the fallback in `question/ask` when the knowledge base cannot answer confidently; each answered question records `modelUsed` and emits `ai_response`/`model_switched` analytics events for the admin model-usage report. Each user is rate-limited to 10 AI answers/day (`AI_DAILY_LIMIT`).
 
 ### Observability
 - Structured JSON logging from all Lambda handlers to CloudWatch Logs
